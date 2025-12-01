@@ -1,6 +1,6 @@
 {
   "minVersion": "0.8",
-  "package": "io.github.starfabricated.nanoforge.mixin.gamehooks",
+  "package": "io.github.starfabricated.nanoforge.impl.mixin.core",
   "compatibilityLevel": "JAVA_16",
   "mixins": [
     "bootstrap.StarfarerLauncherMixin"

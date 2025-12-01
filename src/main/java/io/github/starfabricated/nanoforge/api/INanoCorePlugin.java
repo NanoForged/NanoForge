@@ -1,0 +1,44 @@
+package io.github.starfabricated.nanoforge.api;
+
+
+import net.minecraft.launchwrapper.LaunchClassLoader;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.util.Map;
+
+/**
+ *  just a copy of IFMLLoadingPlugin, but only necessary part for CoreMod
+ * <cinit> is on CoreModManager.discoverCoreMods , do not use static init block
+ *
+ */
+public interface INanoCorePlugin {
+
+    //same name, old friend
+    String[] getASMTransformerClass();
+
+    //WIP
+    //like injectData, may useful
+    void setupPlugin(LaunchClassLoader classLoader, Map<String, Object> data);
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    //idk probably useless
+    public @interface Name {
+        public String[] value() default "";
+    }
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    public @interface TransformerExclusions {
+        public String[] value() default "";
+    }
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    @interface SortingIndex {
+        int value() default 0;
+    }
+}
