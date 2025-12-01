@@ -1,32 +1,42 @@
 package io.github.starfabricated.nanoforge;
 
+
+import com.llamalad7.mixinextras.MixinExtrasBootstrap;
+import net.minecraft.launchwrapper.LaunchClassLoader;
+import org.spongepowered.asm.launch.MixinBootstrap;
+import org.spongepowered.asm.mixin.Mixins;
+
 import java.io.File;
-import java.util.List;
-import java.util.jar.JarFile;
-import java.util.zip.ZipEntry;
 
-public class NanoForgeLaunchHelper {
+public final class NanoForgeLaunchHelper {
     public static final String MODS_PATH = System.getProperty("com.fs.starfarer.settings.paths.mods");
-    public static final File modsDir = new File(MODS_PATH) ;
-
     private NanoForgeLaunchHelper(){}
 
-
-    public static Boolean hasModMixins(JarFile jarFile) {
-        return jarFile.stream()
-                .filter(entry -> !entry.isDirectory())
-                .map(ZipEntry::getName)
-                .anyMatch(name -> name.endsWith(".mixins.json"));
+    public static File getModsDir(){
+        if (MODS_PATH != null) {
+            return new File(MODS_PATH);
+        } else {
+            throw new RuntimeException("[NanoForge] can not find Mods dir! (com.fs.starfarer.settings.paths.mods) is null");
+        }
     }
 
-    public static List<String> getModMixins(JarFile jarFile) {
-        return jarFile.stream()
-                .filter(entry -> !entry.isDirectory() && entry.getName().endsWith(".mixins.json"))
-                .map(ZipEntry::getName)
-                .toList();
+    public static void configureLaunch(LaunchClassLoader classLoader) {
+        // transformer exclusions
+        //classLoader.addTransformerExclusion("io.github.starfabricated.nanoforge.");
+        classLoader.addTransformerExclusion("org.spongepowered.");
+
+        // classloader exclusions
+        classLoader.addClassLoaderExclusion("org.lwjgl");
+        classLoader.addClassLoaderExclusion("org.slf4j");
+        classLoader.addClassLoaderExclusion("org.apache.logging.log4j");
+        classLoader.addClassLoaderExclusion("org.apache.logging.slf4j");
+        classLoader.addClassLoaderExclusion("LZMA.");
+
     }
 
-    public static boolean isJarFile(File file) {
-        return file.isFile() && file.getName().toLowerCase().endsWith(".jar");
+    public static void initMixin(){
+        MixinBootstrap.init();
+        MixinExtrasBootstrap.init();
+        Mixins.addConfiguration("nanoforge.mixins.json");
     }
 }

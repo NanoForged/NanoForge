@@ -33,23 +33,22 @@ configurations {
 
 dependencies {
 
-    //The greatest Classloader magic in Java game history
-    //forked by GTNH-Team
-    //edit: we need modLauncher , launchwrapper have some problem
-    implementation('net.minecraft:launchwrapper:1.17.4')
+    //LaunchWrapper bust FOSS
+    implementation('com.gtnewhorizons.retrofuturabootstrap:RetroFuturaBootstrap:1.0.12')
 
     //The greatest ASM Framework in Java game history
     //forked by FabricMC
     implementation "net.fabricmc:sponge-mixin:0.16.3+mixin.0.8.7"
+    implementation(annotationProcessor("io.github.llamalad7:mixinextras-common:0.5.0"))
 
     // EventBus, part of (Neo)forge
     implementation('net.neoforged:bus:8.0.5')
 
-    //somehow log4j2.xml not in classpath idk why
-    //move to log4j-1.2-api
-    implementation 'org.apache.logging.log4j:log4j-1.2-api:2.25.2'
+    //slf4j is back!
+    implementation 'org.slf4j:slf4j-api:2.0.17'
+    implementation 'org.slf4j:log4j-over-slf4j:2.0.17'
+    implementation 'org.apache.logging.log4j:log4j-slf4j18-impl:2.18.0'
     implementation 'org.apache.logging.log4j:log4j-core:2.25.2'
-    implementation 'org.apache.logging.log4j:log4j-api:2.25.2'
 
     /*
     somehow it doesn't work , maybe wrong version

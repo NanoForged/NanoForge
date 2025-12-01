@@ -9,9 +9,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(targets = "com.fs.starfarer.StarfarerLauncher")
 public class StarfarerLauncherMixin {
-
-    @Inject(method = "main([Ljava/lang/String;)V", at = @At("TAIL"))
+    @Inject(method = "main([Ljava/lang/String;)V", at = @At("HEAD"))
     private static void InjectInit(String[] par1, CallbackInfo ci){
-        NanoForge.Init();
+        NanoForge.init();
     }
 }
