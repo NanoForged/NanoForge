@@ -21,7 +21,7 @@ public interface IMixinLoader extends INanoCorePlugin {
         return new String[0];
     }
     @Override
-    default void setupPlugin(LaunchClassLoader classLoader, Map<String, Object> data){
+    default void injectData(Map<String, Object> data){
         // DO Nothing
     };
 

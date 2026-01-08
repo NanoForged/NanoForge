@@ -1,6 +1,7 @@
 package io.github.starfabricated.nanoforge.api;
 
 
+import io.github.starfabricated.nanoforge.core.CoreModManager;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 
 import java.lang.annotation.ElementType;
@@ -10,24 +11,27 @@ import java.lang.annotation.Target;
 import java.util.Map;
 
 /**
- *  just a copy of IFMLLoadingPlugin, but only necessary part for CoreMod
- * <cinit> is on CoreModManager.discoverCoreMods , do not use static init block
+ * <p>A copy of IFMLLoadingPlugin, but only necessary part for CoreMod.</p>
+ * <p>Plugins are loaded via Java SPI. Avoid static initialization blocks
+ * as they're initialized during {@code CoreModManager.discoverCoreMods()}.</p>
+ * <p> {@code META-INF/services/io.github.starfabricated.nanoforge.api.INanoCorePlugin} you know that.</p>
  *
+ * @see CoreModManager
  */
 public interface INanoCorePlugin {
 
     //same name, old friend
     String[] getASMTransformerClass();
 
-    //WIP
-    //like injectData, may useful
-    void setupPlugin(LaunchClassLoader classLoader, Map<String, Object> data);
+    //WIP: this func now is too "free" and "powerful", idk how to design it
+    //like injectData in FML, i removed most thing about IFMLCallHook.
+    void injectData(Map<String, Object> data);
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.TYPE)
     //idk probably useless
     public @interface Name {
-        public String[] value() default "";
+        public String value() default "";
     }
 
     @Retention(RetentionPolicy.RUNTIME)

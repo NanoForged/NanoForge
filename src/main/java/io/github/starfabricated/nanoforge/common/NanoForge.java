@@ -1,4 +1,4 @@
-package io.github.starfabricated.nanoforge.impl;
+package io.github.starfabricated.nanoforge.common;
 import net.neoforged.bus.api.BusBuilder;
 import net.neoforged.bus.api.IEventBus;
 import org.apache.logging.log4j.LogManager;

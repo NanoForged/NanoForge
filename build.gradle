@@ -33,7 +33,7 @@ configurations {
 
 dependencies {
 
-    //LaunchWrapper bust FOSS
+    //LaunchWrapper but FOSS
     implementation('com.gtnewhorizons.retrofuturabootstrap:RetroFuturaBootstrap:1.0.12')
 
     //The greatest ASM Framework in Java game history
@@ -43,6 +43,10 @@ dependencies {
 
     // EventBus, part of (Neo)forge
     implementation('net.neoforged:bus:8.0.5')
+
+    implementation("com.google.auto.service:auto-service:1.1.1")
+    runtimeOnly("com.google.auto.service:auto-service-annotations:1.1.1")
+
 
     //slf4j is back!
     implementation 'org.slf4j:slf4j-api:2.0.17'

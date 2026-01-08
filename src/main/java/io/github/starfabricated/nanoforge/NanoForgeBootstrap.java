@@ -1,6 +1,7 @@
 package io.github.starfabricated.nanoforge;
 
-import io.github.starfabricated.nanoforge.impl.core.CoreModManager;
+import io.github.starfabricated.nanoforge.api.INanoCorePlugin;
+import io.github.starfabricated.nanoforge.core.CoreModManager;
 import net.minecraft.launchwrapper.ITweaker;
 import net.minecraft.launchwrapper.Launch;
 import net.minecraft.launchwrapper.LaunchClassLoader;
@@ -11,13 +12,15 @@ import org.apache.logging.log4j.Logger;
 import java.io.File;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Path;
 import java.util.List;
 
+import static io.github.starfabricated.nanoforge.utils.FileUtils.*;
 
+@INanoCorePlugin.SortingIndex(-100)
 public final class NanoForgeBootstrap implements ITweaker {
     private static final Logger LOGGER = LogManager.getLogger("NanoForge/Tweaker");
     private static URI jarLocation;
-
 
     public static final String MAIN_CLASS = "com.fs.starfarer.StarfarerLauncher";
 
@@ -28,16 +31,17 @@ public final class NanoForgeBootstrap implements ITweaker {
         } catch (URISyntaxException e) {
             throw new RuntimeException(e);
         }
+        LOGGER.info("NanoForge Jar is in: {}; Game Jar is in:{}", Path.of(getJarLocation()).getParent(),getGameJarPath().getParent());
     }
 
         @Override
     public void injectIntoClassLoader(LaunchClassLoader classLoader) {
         LOGGER.info("Tweaker Installed! NanoForge Bootstrapping...");
+
         //just do it
         NanoForgeLaunchHelper.configureLaunch(classLoader);
         //make CorePlugin work
         CoreModManager.handleLaunch(classLoader,this);
-
     }
 
     @Override
@@ -55,7 +59,7 @@ public final class NanoForgeBootstrap implements ITweaker {
         return jarLocation;
     }
 
-    Logger getLogger(){
+    public static Logger getLogger(){
         return LOGGER;
     }
 

@@ -2,36 +2,30 @@ package io.github.starfabricated.nanoforge;
 
 
 import com.llamalad7.mixinextras.MixinExtrasBootstrap;
+import io.github.starfabricated.nanoforge.core.GameData;
+import io.github.starfabricated.nanoforge.utils.FileUtils;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.spongepowered.asm.launch.MixinBootstrap;
 import org.spongepowered.asm.mixin.Mixins;
 
-import java.io.File;
-
 public final class NanoForgeLaunchHelper {
     private static final Logger LOGGER = LogManager.getLogger("NanoForge/Bootstrap");
-    public static final String MODS_PATH = System.getProperty("com.fs.starfarer.settings.paths.mods");
 
     private NanoForgeLaunchHelper(){}
 
-    public static File getModsDir(){
-        if (MODS_PATH != null) {
-            return new File(MODS_PATH);
-        } else {
-            String message = "[NanoForge] Can not find Mods dir! (com.fs.starfarer.settings.paths.mods) is null";
-            //Sys.alert("NanoForge", message);
-            throw new RuntimeException(message);
-        }
-    }
-
+    //i called this 'FMLLaunchHandler' ...
     public static void configureLaunch(LaunchClassLoader classLoader) {
         LOGGER.info("Starting configure Launch...");
-        //you know this
+        //you can read func name, right?
         initMixin();
-        //try to make everything work
+
+        //try to make everything work, like lwjgl or SLF4j
         exclusionClass(classLoader);
+
+        buildingGameData();
+
         LOGGER.info("Launch Configure done.");
     }
 
@@ -44,15 +38,18 @@ public final class NanoForgeLaunchHelper {
         LOGGER.info("Initializing MixinExtras...");
         MixinExtrasBootstrap.init();
 
-        //TODO: make this better
+        //TODO: make mixin config load better , need support multi game version etc.
         LOGGER.info("Loading NanoForge Mixin Config...");
         Mixins.addConfiguration("nanoforge.init.mixins.json");
     }
 
     private static void exclusionClass(LaunchClassLoader classLoader){
         // transformer exclusions
-        classLoader.addTransformerExclusion("io.github.starfabricated.nanoforge.impl.asm.tweakers");
+        classLoader.addTransformerExclusion("io.github.starfabricated.nanoforge.core.asm");
+        classLoader.addTransformerExclusion("io.github.starfabricated.nanoforge.mixin");
         classLoader.addTransformerExclusion("org.spongepowered.");
+        classLoader.addTransformerExclusion("LZMA.");
+        classLoader.addTransformerExclusion("scala.");
         LOGGER.info("TransformerExclusion done.");
 
         // classloader exclusions
@@ -64,4 +61,11 @@ public final class NanoForgeLaunchHelper {
         LOGGER.info("ClassLoaderExclusion done.");
     }
 
+    private static void buildingGameData(){
+        GameData.setData("gameHome", FileUtils.getGameHome().toString());
+        GameData.setData("savesPath",FileUtils.getSavesPath().toString());
+        GameData.setData("modsPath",FileUtils.getModsPath().toString());
+        GameData.setData("screenshotsPath",FileUtils.getScreenshotsPath().toString());
+        GameData.setData("installType",FileUtils.isClassicInstall() ? "classic":"other");
+    }
 }

@@ -1,4 +1,4 @@
-package io.github.starfabricated.nanoforge.impl;
+package io.github.starfabricated.nanoforge.common;
 
 
 
