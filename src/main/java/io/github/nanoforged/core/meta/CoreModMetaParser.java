@@ -29,7 +29,7 @@ public final class CoreModMetaParser {
     private static final Logger LOGGER = LogManager.getLogger("NanoForge/CoreModMeta");
     private static final Set<String> KNOWN_TOP_LEVEL_KEYS = Set.of(
             "id", "name", "version", "authors", "description",
-            "priority", "depends", "pluginClass", "asm", "mixin");
+            "priority", "depends", "pluginClass", "asm", "mixin", "patch");
 
     private CoreModMetaParser() {}
 
@@ -88,6 +88,7 @@ public final class CoreModMetaParser {
                 .asmTransformers(optionalStringList(config, "asm.transformers", source))
                 .asmTransformerExclusions(optionalStringList(config, "asm.transformerExclusions", source))
                 .mixinConfigs(optionalStringList(config, "mixin.configs", source))
+                .patchEntries(optionalStringList(config, "patch.entries", source))
                 .source(source)
                 .build();
     }

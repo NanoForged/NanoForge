@@ -2,8 +2,11 @@ package io.github.nanoforged.core;
 
 import io.github.nanoforged.api.CoreModContext;
 import io.github.nanoforged.api.INanoCorePlugin;
+import io.github.nanoforged.core.asm.tweakers.NanoPatcherTransformer;
 import io.github.nanoforged.core.meta.CoreModMeta;
 import io.github.nanoforged.core.meta.CoreModMetaException;
+import io.github.nanoforged.core.patch.ClassPatch;
+import io.github.nanoforged.core.patch.PatcherManager;
 import io.github.nanoforged.utils.PathUtils;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 import org.apache.logging.log4j.LogManager;
@@ -15,6 +18,7 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 /**
  * CoreMod 管理器：发现 → 依赖排序 → 装配应用 → 生命周期回调。
@@ -56,6 +60,12 @@ public class CoreModManager {
             } catch (MalformedURLException e) {
                 throw new IllegalStateException("coremod jar URL 非法: " + meta.source(), e);
             }
+        }
+
+        Map<String, ClassPatch> patches = PatcherManager.load(assembly.sortedMods());
+        if (!patches.isEmpty()) {
+            classLoader.registerTransformer(NanoPatcherTransformer.class.getName());
+            LOGGER.info("已注册 {} 个类级 bin patch", patches.size());
         }
 
         assembly.transformerExclusions().forEach(classLoader::addTransformerExclusion);

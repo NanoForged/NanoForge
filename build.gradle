@@ -50,6 +50,9 @@ dependencies {
     implementation 'com.electronwill.night-config:core:3.8.3'
     implementation 'com.electronwill.night-config:toml:3.8.3'
 
+    // 类级 bin patch 的 diff/apply（R2 Patch 工作流，纯 Java 无传递依赖）
+    implementation 'org.badiff:badiff:1.2.1'
+
     // 测试
     testImplementation platform('org.junit:junit-bom:5.13.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -125,3 +128,23 @@ tasks.register('extractNativeLib', Copy) {
     include "**/*.dll", "**/*.so", "**/*.dylib"
 }
 copyAssets.dependsOn extractNativeLib
+
+// R2 Patch 工作流：对比原 named jar 与修改后编译产物，生成 NFBP bin patch
+// 用法：./gradlew generatePatches -Ppatch.original=<原named.jar> -Ppatch.patched=<修改后class目录> -Ppatch.output=<输出目录>
+tasks.register('generatePatches', JavaExec) {
+    group = 'nanoforge'
+    description = '对比原 named jar 与 patched class 目录，生成类级 bin patch（NFBP）'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'io.github.nanoforged.core.patch.PatchGenCli'
+
+    def original = providers.gradleProperty('patch.original')
+    def patched = providers.gradleProperty('patch.patched')
+    def output = providers.gradleProperty('patch.output')
+
+    doFirst {
+        if (!original.isPresent() || !patched.isPresent() || !output.isPresent()) {
+            throw new GradleException('缺少参数：需 -Ppatch.original= -Ppatch.patched= -Ppatch.output=')
+        }
+    }
+    args(original.getOrElse(''), patched.getOrElse(''), output.getOrElse(''))
+}

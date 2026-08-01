@@ -1,6 +1,6 @@
 # NanoForge 设计文档
 
-> 版本：v1（2026-08-01） 状态：第一轮已落地
+> 版本：v1（2026-08-01） 状态：R1/R2 已落地
 
 ## 1. 定位
 
@@ -74,9 +74,10 @@ CoreModAssembly                     纯数据装配计划（aggregated exclusion
   │  CoreModManager.apply()         唯一接触运行时设施的地方
   ▼
 1. coremod jar addURL → LaunchClassLoader
-2. transformerExclusions / asmTransformers 按序注册
-3. mixinConfigs 统一登记（Early Mixin）
-4. pluginClass 实例化（公开无参构造）→ 按依赖序 onLoad(CoreModContext)
+2. PatcherManager.load() 读取各 coremod [patch] entries → NanoPatcherTransformer 注册（链最前）
+3. transformerExclusions / asmTransformers 按序注册
+4. mixinConfigs 统一登记（Early Mixin）
+5. pluginClass 实例化（公开无参构造）→ 按依赖序 onLoad(CoreModContext)
 ```
 
 设计要点：
@@ -99,11 +100,51 @@ CoreModAssembly                     纯数据装配计划（aggregated exclusion
 - 同 priority 按 id 字典序兜底，保证同输入必然同输出。
 - 软依赖（loadAfter/loadBefore）刻意不设计，出现真实需求再加。
 
+### 2.4 Patch 开发工作流（R2，bin patch）
+
+比 ASM/Mixin 更底层的修改通道：直接修改 named 游戏源码，编译后与原 named
+jar 逐类 diff 出类级二进制补丁，运行时整类替换。
+
+```
+开发侧（本仓库 generatePatches 任务）
+原 named jar（SourceSector 产出） + 修改源码编译的 class 目录
+  │  PatchGenerator（core/patch，纯逻辑）
+  │    · 类名以 ClassReader 内部名为准
+  │    · 原 jar 不存在的类 = 新增类（随 coremod 常规类分发，INFO 跳过）
+  │    · 字节一致的类跳过；写出前 badiff 回验（原类+diff==修改后类）
+  ▼
+<类内部名>.binpatch（NFBP 格式：魔数/版本/类名/原类 SHA-256 基线/badiff diff）
+  │  打进 coremod jar，[patch] entries 逐项声明
+  ▼
+运行时
+PatcherManager.load()   按依赖序读全部 entries → 类名索引（同类冲突装配期报错）
+  │  PatcherManager.activePatches() 静态生效索引
+  ▼
+NanoPatcherTransformer  transformer 链最前（先于 coremod ASM/Mixin）
+  │  命中 → SHA-256 基线校验 → badiff apply；未命中透传
+  ▼
+patched 类字节进入后续 transformer 链
+```
+
+设计要点：
+
+- **目标命名空间 = named**：patch 只在 deobf 运行时生效；obf 运行时类名
+  不匹配自然透传，不做 runtime remap（跨平台模型见 §1.1：全平台统一部署
+  windows 版 named jar）。
+- **基线显式校验**：原类字节 SHA-256 不符即抛 `PatchException`（含类名、
+  期望/实际哈希、来源 coremod），游戏更新导致 patch 失效可追，不静默跳过。
+- **冲突显式化**：同一类被两个 coremod patch，装配期报错并指明双方来源。
+- **LaunchWrapper 约束**：`registerTransformer` 只接受类名并无参反射实例化，
+  故 NanoPatcherTransformer 生产路径经无参构造读取
+  `PatcherManager.activePatches()`（装配期 load 已先行写入）。
+- **纯逻辑与运行时解耦**沿用 R1：PatchFormat/PatchGenerator/PatcherManager
+  均为可单测纯逻辑；diff 算法用 badiff（`org.badiff:badiff:1.2.1`，
+  纯 Java 无传递依赖）。
+
 ## 3. 已排除（不做或不在近期）
 
 | 项 | 原因 |
 |---|---|
-| Patch/bin patch（PatcherManager/NanoPatcherTransformer 空壳） | 第二轮，依赖 SourceSector named 基线（已产出） |
 | 跨平台运行时承载（natives / 启动 / OS 分支） | 第三轮；按 1.1 的修正模型，不含字节码对位 |
 | 晚期 Mixin | 无 vanilla 模组加载点，需要时单独立项 |
 | 普通模组（非 coremod）加载 | 游戏原生 mod 加载器已覆盖，NanoForge 不重复造 |

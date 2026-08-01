@@ -67,6 +67,7 @@ class CoreModMetaParserTest {
         assertTrue(meta.asmTransformers().isEmpty());
         assertTrue(meta.asmTransformerExclusions().isEmpty());
         assertTrue(meta.mixinConfigs().isEmpty());
+        assertTrue(meta.patchEntries().isEmpty());
     }
 
     @Test
@@ -108,6 +109,38 @@ class CoreModMetaParserTest {
         CoreModMetaException e = assertThrows(CoreModMetaException.class,
                 () -> CoreModMetaParser.parseToml(toml, "test-bad-depends"));
         assertTrue(e.getMessage().contains("depends"), e.getMessage());
+    }
+
+    @Test
+    void parsesPatchEntries() {
+        String toml = """
+                id = "patcher"
+                name = "Patcher"
+                version = "1.0"
+                pluginClass = "com.example.Plugin"
+
+                [patch]
+                entries = ["patches/a.binpatch", "patches/b.binpatch"]
+                """;
+        CoreModMeta meta = CoreModMetaParser.parseToml(toml, "test-patch");
+
+        assertEquals(java.util.List.of("patches/a.binpatch", "patches/b.binpatch"), meta.patchEntries());
+    }
+
+    @Test
+    void wrongTypePatchEntriesFails() {
+        String toml = """
+                id = "bad"
+                name = "Bad"
+                version = "1.0"
+                pluginClass = "com.example.Plugin"
+
+                [patch]
+                entries = "not-a-list"
+                """;
+        CoreModMetaException e = assertThrows(CoreModMetaException.class,
+                () -> CoreModMetaParser.parseToml(toml, "test-bad-patch"));
+        assertTrue(e.getMessage().contains("patch.entries"), e.getMessage());
     }
 
     @Test

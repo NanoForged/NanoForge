@@ -22,6 +22,7 @@ public final class CoreModMeta {
     private final List<String> asmTransformers;
     private final List<String> asmTransformerExclusions;
     private final List<String> mixinConfigs;
+    private final List<String> patchEntries;
     /** 元数据来源（jar 路径或测试名），仅用于诊断输出 */
     private final String source;
 
@@ -37,6 +38,7 @@ public final class CoreModMeta {
         this.asmTransformers = List.copyOf(builder.asmTransformers);
         this.asmTransformerExclusions = List.copyOf(builder.asmTransformerExclusions);
         this.mixinConfigs = List.copyOf(builder.mixinConfigs);
+        this.patchEntries = List.copyOf(builder.patchEntries);
         this.source = builder.source;
     }
 
@@ -84,6 +86,10 @@ public final class CoreModMeta {
         return mixinConfigs;
     }
 
+    public List<String> patchEntries() {
+        return patchEntries;
+    }
+
     public String source() {
         return source;
     }
@@ -104,6 +110,7 @@ public final class CoreModMeta {
         private List<String> asmTransformers = List.of();
         private List<String> asmTransformerExclusions = List.of();
         private List<String> mixinConfigs = List.of();
+        private List<String> patchEntries = List.of();
         private String source = "<unknown>";
 
         private Builder() {}
@@ -160,6 +167,11 @@ public final class CoreModMeta {
 
         public Builder mixinConfigs(List<String> mixinConfigs) {
             this.mixinConfigs = mixinConfigs;
+            return this;
+        }
+
+        public Builder patchEntries(List<String> patchEntries) {
+            this.patchEntries = patchEntries;
             return this;
         }
 
