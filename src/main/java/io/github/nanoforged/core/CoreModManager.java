@@ -99,6 +99,13 @@ public class CoreModManager {
         try {
             clazz = Class.forName(meta.pluginClass(), true, classLoader);
         } catch (ClassNotFoundException e) {
+            // 诊断：jar 是否在 loader 源中、类资源是否可被 findResource 找到，
+            // 用于区分「jar 未加入」与「资源查找被运行时状态污染」两类故障
+            String resourcePath = meta.pluginClass().replace('.', '/') + ".class";
+            LOGGER.error("pluginClass 加载失败诊断: source={}, jarInSources={}, resourceFound={}",
+                    meta.source(),
+                    classLoader.getSources().stream().anyMatch(u -> u.getPath().endsWith(meta.source())),
+                    classLoader.findResource(resourcePath) != null);
             throw new CoreModMetaException("coremod '" + meta.id() + "' 的 pluginClass 不存在: "
                     + meta.pluginClass() + " (" + meta.source() + ")", e);
         }

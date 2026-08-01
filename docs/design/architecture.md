@@ -183,6 +183,20 @@ natives：`extractGameNatives` 从游戏 vendor 的
 `lib/native/{linux,macos,windows}`，游戏字节码与 natives 正交。
 OS 条件分支审计结论见 `os-branch-audit.md`（分支面极小，设驱动属性即全覆盖）。
 
+### 2.6 coremod 化配套结论（R4）
+
+- **sanitize 不移植**：SSOptimizer javaagent 时代的 Sanitizing/ReflectionSanitizing
+  通道面向「named jar 含非法标识符」场景；对 SourceSector 全部 windows named jar
+  实查后非法标识符仅 `EngineSlot` 5 个字段（identity 保持原名所致），且无任何
+  字符串/反射引用——不做运行时 sanitize，留待 SourceSector 侧修正映射。
+  完整证据见 `sanitize-audit.md`。
+- **coremod 伴生目录**：coremod  jar 放 `mods/coremods/`，其随附资源
+  （native、数据文件等）放 `mods/<coremod-id>/`，由 coremod 自解析
+  （约定见 docs/README.md）。
+- **RFB transformer 契约**：RFB `runTransformers` 无条件采用 transformer 返回值
+  （与原版 LaunchWrapper「返回 null 表示未修改」不同），coremod transformer
+  未命中时必须透传原始字节，否则会丢弃类。docs/README.md 有显式警告。
+
 ## 3. 已排除（不做或不在近期）
 
 | 项 | 原因 |

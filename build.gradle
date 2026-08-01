@@ -2,6 +2,7 @@ plugins {
     id 'java'
     id 'eclipse'
     id 'application'
+    id 'maven-publish'
 }
 
 group = 'io.github.nanoforged'
@@ -119,6 +120,16 @@ test {
 // 由 NanoForgeBootstrap 显式 addURL 进 LaunchClassLoader。
 jar {
     exclude 'nanoforge/mixin/**', 'nanoforge.init.mixins.json'
+}
+
+// 供 coremod 项目（如 SSOptimizer）编译期 compileOnly 依赖：
+// ./gradlew publishToMavenLocal → io.github.nanoforged:NanoForge:0.1.0-SNAPSHOT
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+        }
+    }
 }
 
 tasks.register('mixinJar', Jar) {

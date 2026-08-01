@@ -9,7 +9,8 @@
 | R1 | CoreMod 骨架完整落地 | ✅ 已完成（分支 feat/coremod-skeleton，commit 03b56ce） |
 | R2 | Patch 开发工作流（bin patch） | ✅ 已完成（游戏内冒烟已随 R3 关闭，见 R2 节说明） |
 | R3 | 跨平台运行时承载 + deobf 全量模式接管 | ✅ 已完成（分支 feat/coremod-skeleton） |
-| R4 | 专用启动器对接 / SSOptimizer coremod 化 | ⬜ 未开始（前置：R2/R3 + SSOptimizer 侧拆分） |
+| R4 | SSOptimizer coremod 化 | ✅ 已完成（分支 feat/coremod-skeleton / SSOptimizer feat/deobf-game） |
+| R5 | 专用启动器对接 | ⬜ 未开始（前置：R4） |
 
 > 设计修正（2026-08-02）：全平台统一部署 windows 版 named jar，**不存在**
 > linux/macos obf jar 的 remap 对位链路。跨平台任务 = 运行时环境层
@@ -110,13 +111,60 @@ obf→intermediary 指纹对位；非 windows 平台运行时 obf→named 解析
 产物，后续应切换为 windows named（SourceSector `build/named-game-repo/windows`）；
 游戏目录改动（启动脚本、mods/ 部署）不入任何 Git 仓库。
 
-## R4 启动器与 SSOptimizer 收编 ⬜
+## R4 SSOptimizer coremod 化 ✅
+
+**前置**：R3 deobf 全量模式接管 ✅；NanoForge 发布 mavenLocal SNAPSHOT
+（`io.github.nanoforged:NanoForge:0.1.0-SNAPSHOT`，maven-publish 插件）✅。
+
+NanoForge 侧：
+
+- [x] maven-publish 接入，`publishToMavenLocal` 供 SSOptimizer 编译期依赖
+- [x] sanitize 必要性核查（docs/design/sanitize-audit.md）：非法标识符仅
+      SourceSector windows named jar 中 `EngineSlot` 5 个字段（identity 保持
+      原名所致），字符串/反射引用为零 → Sanitizing/ReflectionSanitizing
+      不移植，留待 SourceSector 侧修正映射
+- [x] docs/README.md 补充 coremod 伴生目录约定（`mods/<coremod-id>/`）与
+      **RFB transformer 契约警告**：RFB `runTransformers` 无条件采用返回值，
+      与原版 LaunchWrapper「返回 null 表示未修改」契约不同，transformer
+      必须透传原始字节
+- [x] `CoreModManager.instantiate` 永久性 ERROR 诊断日志（pluginClass CNFE
+      时输出 jarInSources/resourceFound）
+
+SSOptimizer 侧（分支 feat/deobf-game）：
+
+- [x] javaagent 通道整体删除（agent/bootstrap/remap/sanitize/MixinBridge 及
+      `:agent-api`/`:mod-optimizations` 子项目）；api/mapping/modopt.dcr
+      源码并入 `:app`
+- [x] 新入口 `bootstrap/SSOptimizerCorePlugin`（INanoCorePlugin，onLoad
+      注册 25 项处理器含 DCR 直注册）；`HybridWeaverTransformer` 改
+      IClassTransformer 静态注册表 + 同类重入透传防护（RFB 契约适配）
+- [x] `coremod.toml`（[asm] 1 transformer + [mixin] mixins.ssoptimizer.json）；
+      named 依赖切 SourceSector windows 仓（`-Psourcesector.namedRepo=`）
+- [x] 构建链清理：jarMapped/jarReobf/reobf 验证/runClientExec/launch-config.json
+      /javaagent 启动脚本全部移除；发布物改为 app jar 双轨
+      （mods/ssoptimizer/jars + mods/coremods）；CI/release 工作流同步
+- [x] 游戏内冒烟（launcher 等价）：0 ERROR、25 项处理器注册、Mixin 生效、
+      native lib 加载、字体 override 生效、jstack 确认主菜单渲染循环
+
+验收（已达成）：双仓库 `./gradlew build` 全绿；游戏内冒烟优化全链路生效。
+
+**排坑记录**（详见 SSOptimizer 侧提交）：
+
+1. shade 的 jctools `module-info.class` 使 RFB 把 jar 当命名模块 → jar 任务
+   排除 `module-info.class` / `META-INF/versions/**`；
+2. RFB transformer 契约差异（见上 docs/README.md 警告）→ weaver 全部改
+   透传原始字节；
+3. `LauncherDirectStartProcessor` 内部类懒加载 → Mixin 反读同类 →
+   ClassCircularityError → weaver 加 IN_FLIGHT 同类重入透传防护。
+
+## R5 专用启动器 ⬜
 
 - [ ] 专用启动器（modified game 启动）取代 RFB tweaker 临时路径
-- [ ] SSOptimizer 退化为 NanoForge coremod（优化处理器迁入；deobf 运行时
-      已被 R3 remap 接管，SSOptimizer 侧对应代码可标注废弃）
-- [ ] 游戏内全量冒烟（复用 SSOptimizer smoke test 三模式）
-- [ ] 首个真实 bin patch 游戏内生效验证（R2 移交，随启动器环境一并做）
+- [ ] 游戏内全量冒烟三模式脚本化（launcher/game/automation，smoke 脚本已
+      支持 `SSOPTIMIZER_SMOKE_LAUNCH_SCRIPT` 环境变量指定启动脚本）
+- [ ] Windows 端 NanoForge 启动入口（当前仅 linux 脚本实机验证）
+- [ ] 游戏目录 4 个游戏 jar 切换为 windows named（SourceSector
+      `build/named-game-repo/windows`）
 
 ---
 
@@ -146,3 +194,8 @@ obf→intermediary 指纹对位；非 windows 平台运行时 obf→named 解析
   jar 拆分三项运行时适配，测试 50 用例全绿；linux 实机冒烟全过（启动进主菜单、
   bin patch 游戏内生效、remap 表 221585 条无失败、mixin 生效），R2 游戏内
   冒烟一并关闭。
+- 2026-08-02：R4 完成——SSOptimizer coremod 化。NanoForge 侧 maven-publish /
+  sanitize 核查（不移植，结论见 docs/design/sanitize-audit.md）/ RFB transformer
+  契约文档化；SSOptimizer 侧 javaagent 通道整体退役、收编为 coremod
+  （SSOptimizerCorePlugin + coremod.toml），构建链与发布物改双轨布局。
+  游戏内冒烟 0 ERROR、25 项处理器注册生效。原「专用启动器」条目拆为 R5。

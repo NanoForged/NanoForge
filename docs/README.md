@@ -49,6 +49,10 @@ entries = ["patches/demo_MyClass.binpatch"]       # 可选，jar 内 bin patch �
 加载顺序由依赖拓扑排序决定：depends 指向的 coremod 先加载；同层按 priority 升序，
 再按 id 字典序，保证确定性。依赖缺失、依赖环、重复 id 均会在启动时给出明确错误。
 
+coremod 的外部文件（native 库、缓存、配置等）按约定放在伴生目录
+`mods/<coremod-id>/`，经 `CoreModContext.modsPath().resolve(meta.id())` 推导；
+`CoreModContext` 同时提供 `gameHome`（游戏安装目录）等路径。
+
 入口插件只保留一个生命周期钩子：
 
 ```java
@@ -62,6 +66,12 @@ public class MyPlugin implements INanoCorePlugin {
 ```
 
 ASM transformer 与 Mixin config 在 toml 数据表中声明即可，无需在插件代码里返回。
+
+> **RFB 契约警告**：RFB 的 `runTransformers` 无条件采纳 transformer 返回值
+> （`basicClass = newKlass`），返回 `null` 会把类字节**直接丢弃**，类加载以
+> "Class bytes are null" 失败——这与原版 LaunchWrapper「null = 无变更」的
+> 契约不同。自定义 `IClassTransformer` 在未命中/不修改时必须返回原
+> `basicClass`，不得返回 `null`。
 
 ### Patch（bin patch）
 
