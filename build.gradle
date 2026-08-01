@@ -7,8 +7,10 @@ plugins {
 group = 'io.github.nanoforged'
 version = '0.1.0-SNAPSHOT'
 
-sourceCompatibility = '17'
-targetCompatibility = '17'
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
 
 repositories {
     mavenCentral()
@@ -43,6 +45,15 @@ dependencies {
 
     implementation("com.google.auto.service:auto-service:1.1.1")
     runtimeOnly("com.google.auto.service:auto-service-annotations:1.1.1")
+
+    // coremod.toml 元数据解析（与 NeoForge 同款）
+    implementation 'com.electronwill.night-config:core:3.8.3'
+    implementation 'com.electronwill.night-config:toml:3.8.3'
+
+    // 测试
+    testImplementation platform('org.junit:junit-bom:5.13.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
 
     //slf4j is back!
@@ -92,6 +103,10 @@ dependencies {
 
     //it just work
     //implementation fileTree(dir: 'lib', include: ['*.jar'])
+}
+
+test {
+    useJUnitPlatform()
 }
 
 tasks.register('copyAssets', Copy) {

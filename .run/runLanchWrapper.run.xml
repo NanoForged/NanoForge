@@ -3,7 +3,7 @@
     <option name="ALTERNATIVE_JRE_PATH" value="temurin-23" />
     <option name="MAIN_CLASS_NAME" value="com.gtnewhorizons.retrofuturabootstrap.Main" />
     <module name="Starsector-IDEA-Ready.main" />
-    <option name="PROGRAM_PARAMETERS" value="--tweakClass io.github.starfabricated.nanoforge.NanoForgeBootstrap" />
+    <option name="PROGRAM_PARAMETERS" value="--tweakClass io.github.nanoforged.NanoForgeBootstrap" />
     <shortenClasspath name="ARGS_FILE" />
     <option name="VM_PARAMETERS" value="@$ProjectFileDir$/.run/Args.txt -Djava.library.path=$ProjectFileDir$/lib/native -Dcom.fs.starfarer.settings.paths.saves=.\saves -Dcom.fs.starfarer.settings.paths.screenshots=.\screenshots -Dcom.fs.starfarer.settings.paths.logs=. -Dcom.fs.starfarer.settings.paths.mods=.\mods -Djava.system.class.loader=com.gtnewhorizons.retrofuturabootstrap.RfbSystemClassLoader" />
     <option name="WORKING_DIRECTORY" value="run" />
