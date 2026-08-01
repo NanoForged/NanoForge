@@ -11,14 +11,33 @@ NanoForge 是面向 Starsector（远行星号）的 CoreMod 加载框架，目�
 
 ```
 SourceSector   ── mapping 工作流（obf → intermediary → named，windows 单基准）
-     │ 产出 named jar / sources jar / 单套全量 mapping
+     │ 产出 named jar / sources jar / 单套全量 mapping（全平台统一产物）
      ▼
 NanoForge      ── 运行时：CoreMod 加载器（本项目）
-     │ 消费 mapping 做跨平台运行时对位；承载 Patch/ASM/Mixin
+     │ 承载 Patch/ASM/Mixin 与跨平台运行时环境（natives / 启动 / OS 分支）
      ▼
 SectorDevGradle ── 构建侧：mod 作者 Gradle 工具链，把前两者接给下游
 SSOptimizer    ── 最终退化为 NanoForge 上的一个 coremod（性能优化 + deobf 运行时）
 ```
+
+### 1.1 跨平台模型（2026-08-02 修正）
+
+**全平台统一部署 windows 版 named jar**，字节码只有一份产物。不存在
+「拿 windows mapping 去 remap linux/macos obf jar」的对位链路——linux/macos
+的 obf jar 不进入任何处理流程。
+
+NanoForge 的跨平台任务因此是**运行时环境层**而非字节码层：
+
+- natives 装配：lwjgl / jinput 平台库按 OS 提供（游戏字节码与 natives 正交）；
+- 启动入口：linux/macos 启动脚本（包装或取代官方 launcher）；
+- OS 条件分支：游戏内 `System.getProperty("com.fs.starfarer.settings.{linux,osx}")`
+  等平台分支在统一 windows jar 下的行为审计与必要时的 Patch 修正。
+
+SourceSector 侧的跨平台指纹对位报告仅作为**前提验证门禁**（确认双平台 jar
+无结构差异），不是 remap 的输入。intermediary 命名空间的价值相应定位为：
+① named jar 中未命名类/成员的稳定引用名（CoreMod ASM/Mixin 数据表直接引用）；
+② 跨游戏版本 mapping 迁移锚点（obf 名随版本重洗，结构指纹不变，
+旧 named 名经 intermediary 自动挂到新版本——Fabric intermediary 的本职用法）。
 
 ## 2. 架构
 
@@ -84,8 +103,8 @@ CoreModAssembly                     纯数据装配计划（aggregated exclusion
 
 | 项 | 原因 |
 |---|---|
-| Patch/bin patch（PatcherManager/NanoPatcherTransformer 空壳） | 第二轮，依赖 SourceSector named 基线 |
-| runtime remap / 结构指纹跨平台对位 | 第三轮，依赖 SourceSector 单 mapping |
+| Patch/bin patch（PatcherManager/NanoPatcherTransformer 空壳） | 第二轮，依赖 SourceSector named 基线（已产出） |
+| 跨平台运行时承载（natives / 启动 / OS 分支） | 第三轮；按 1.1 的修正模型，不含字节码对位 |
 | 晚期 Mixin | 无 vanilla 模组加载点，需要时单独立项 |
 | 普通模组（非 coremod）加载 | 游戏原生 mod 加载器已覆盖，NanoForge 不重复造 |
 | 启动路线改造 | 临时路径，等专用启动器 |
