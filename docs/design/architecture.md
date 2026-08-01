@@ -1,0 +1,98 @@
+# NanoForge 设计文档
+
+> 版本：v1（2026-08-01） 状态：第一轮已落地
+
+## 1. 定位
+
+NanoForge 是面向 Starsector（远行星号）的 CoreMod 加载框架，目标是建立
+「统一化 ASM/Mixin」的类 Minecraft NeoForge/Fabric 社区模组生态基座。
+
+在三项目拆分中的生态位：
+
+```
+SourceSector   ── mapping 工作流（obf → intermediary → named，windows 单基准）
+     │ 产出 named jar / sources jar / 单套全量 mapping
+     ▼
+NanoForge      ── 运行时：CoreMod 加载器（本项目）
+     │ 消费 mapping 做跨平台运行时对位；承载 Patch/ASM/Mixin
+     ▼
+SectorDevGradle ── 构建侧：mod 作者 Gradle 工具链，把前两者接给下游
+SSOptimizer    ── 最终退化为 NanoForge 上的一个 coremod（性能优化 + deobf 运行时）
+```
+
+## 2. 架构
+
+### 2.1 启动链（临时路径，后续有专用启动器）
+
+```
+RFB Main (com.gtnewhorizons.retrofuturabootstrap.Main)
+  └─ --tweakClass io.github.nanoforged.NanoForgeBootstrap   ← LaunchWrapper tweaker
+       ├─ NanoForgeLaunchHelper.configureLaunch()
+       │    ├─ MixinBootstrap.init() + MixinExtrasBootstrap.init()
+       │    ├─ Mixins.addConfiguration("nanoforge.init.mixins.json")
+       │    └─ transformer/classloader exclusion（自身包、sponge、lwjgl、slf4j…）
+       └─ CoreModManager.handleLaunch()                     ← coremod 装配（见 2.2）
+游戏 main: com.fs.starfarer.StarfarerLauncher
+  └─ StarfarerLauncherMixin @Inject HEAD → NanoForge.init()  ← EventBus 启动
+```
+
+决策记录：启动路线（RFB tweaker vs javaagent）**均为临时路径**，后续由专用启动器
+（modified game 启动）取代，现阶段不为启动链做额外投入。
+
+### 2.2 CoreMod 装配管线（第一轮核心）
+
+```
+mods/coremods/*.jar
+  │  CoreModDiscovery.scan()        纯逻辑：无 coremod.toml 的 jar 跳过（WARN）
+  ▼
+List<CoreModMeta>                   纯数据：id/name/version/depends/priority/pluginClass
+  │  CoreModMetaParser              night-config 解析 + 必填/类型校验 + 未知键 WARN
+  ▼
+CoreModAssembly.assemble()
+  │  CoreModSorter.sort()           Kahn 拓扑：depends → priority 升序 → id 字典序（确定性）
+  ▼
+CoreModAssembly                     纯数据装配计划（aggregated exclusions/transformers/mixins）
+  │  CoreModManager.apply()         唯一接触运行时设施的地方
+  ▼
+1. coremod jar addURL → LaunchClassLoader
+2. transformerExclusions / asmTransformers 按序注册
+3. mixinConfigs 统一登记（Early Mixin）
+4. pluginClass 实例化（公开无参构造）→ 按依赖序 onLoad(CoreModContext)
+```
+
+设计要点：
+
+- **coremod.toml 是唯一元数据来源**。SPI 发现、`@NanoCorePluginInfo` 注解、
+  `IMixinLoader` 接口、`injectData(Map)` 自由传参已全部移除，避免多套机制漂移。
+- **纯逻辑与运行时解耦**：发现/解析/排序/装配计划生成不触碰 LaunchClassLoader
+  与 Mixin 静态状态，全链路可单元测试；`CoreModManager.apply()` 是薄壳。
+- **错误显式化**：依赖缺失、依赖环（打印环路径）、重复 id、非法 toml、
+  pluginClass 不存在/未实现接口/无无参构造，均在启动期抛出带来源的诊断，
+  无静默兜底。
+- **INanoCorePlugin 收敛为生命周期钩子**：`onLoad(CoreModContext)`；
+  context 提供 meta / 游戏路径 / 按 id 命名的 logger。EventBus 不进 context
+  （`NanoForge.EVENT_BUS` 静态可达，且 init 时序晚于装配）。
+
+### 2.3 依赖语义
+
+- `depends`：硬依赖。缺失即启动失败；同时约束加载顺序（被依赖者先加载）。
+- `priority`：同层次序裁决，升序先加载（越小越早），默认 0。
+- 同 priority 按 id 字典序兜底，保证同输入必然同输出。
+- 软依赖（loadAfter/loadBefore）刻意不设计，出现真实需求再加。
+
+## 3. 已排除（不做或不在近期）
+
+| 项 | 原因 |
+|---|---|
+| Patch/bin patch（PatcherManager/NanoPatcherTransformer 空壳） | 第二轮，依赖 SourceSector named 基线 |
+| runtime remap / 结构指纹跨平台对位 | 第三轮，依赖 SourceSector 单 mapping |
+| 晚期 Mixin | 无 vanilla 模组加载点，需要时单独立项 |
+| 普通模组（非 coremod）加载 | 游戏原生 mod 加载器已覆盖，NanoForge 不重复造 |
+| 启动路线改造 | 临时路径，等专用启动器 |
+
+## 4. 技术栈基线
+
+- Java 17（source/target），Gradle 9.4.1（JDK 25 可跑），JUnit 5（BOM 5.13）
+- RFB 1.0.12（LaunchWrapper FOSS）、sponge-mixin 0.16.3+mixin.0.8.7、
+  MixinExtras 0.5.0、neoforged bus 8.0.5、night-config 3.8.3（coremod.toml）
+- CI：GitHub Actions（temurin 17 + `./gradlew build`）
