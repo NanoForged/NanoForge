@@ -62,7 +62,7 @@ dependencies {
     //slf4j is back!
     implementation 'org.slf4j:slf4j-api:2.0.17'
     implementation 'org.slf4j:log4j-over-slf4j:2.0.17'
-    implementation 'org.apache.logging.log4j:log4j-slf4j18-impl:2.18.0'
+    implementation 'org.apache.logging.log4j:log4j-slf4j2-impl:2.25.2'
     implementation 'org.apache.logging.log4j:log4j-core:2.25.2'
 
     /*
@@ -112,6 +112,25 @@ test {
     useJUnitPlatform()
 }
 
+// mixin 子系统要求 mixin 类经 LaunchClassLoader 加载（包不得被 RFB 系统类加载器占有）。
+// RFB 的 Launch 会把 tweaker 所在包（io.github.nanoforged）整体注册为
+// LaunchClassLoader 排除项，故 mixin 类置于独立根包 nanoforge.mixin 下，
+// 且与配置单独打包到 build/nanoforge/runtime/（不在启动脚本 -classpath glob 内），
+// 由 NanoForgeBootstrap 显式 addURL 进 LaunchClassLoader。
+jar {
+    exclude 'nanoforge/mixin/**', 'nanoforge.init.mixins.json'
+}
+
+tasks.register('mixinJar', Jar) {
+    group = 'nanoforge'
+    description = '打包 mixin 类与 init 配置到 build/nanoforge/runtime/NanoForge-mixins.jar'
+    archiveFileName = 'NanoForge-mixins.jar'
+    destinationDirectory = layout.buildDirectory.dir('nanoforge/runtime')
+    from(sourceSets.main.output) {
+        include 'nanoforge/mixin/**', 'nanoforge.init.mixins.json'
+    }
+}
+
 tasks.register('copyAssets', Copy) {
     from 'assets'
     into 'run/'
@@ -128,6 +147,149 @@ tasks.register('extractNativeLib', Copy) {
     include "**/*.dll", "**/*.so", "**/*.dylib"
 }
 copyAssets.dependsOn extractNativeLib
+
+// R3 natives 装配：从官方 natives jar（lwjgl 2.9.3 / jinput 2.0.7，随游戏发布，
+// 来源目录默认取 SSOptimizer named-game-jars 构建产物）按 OS 提取到 lib/native/{linux,macos,windows}
+// 源 jar 不入 Git；缺失即报错。
+tasks.register('extractGameNatives') {
+    group = 'nanoforge'
+    description = '从官方 natives jar 按 OS 提取游戏 natives 到 lib/native/'
+
+    def namedJars = providers.gradleProperty('sourcesector.namedJars')
+            .getOrElse('../SSOptimizer/build/named-game-jars/windows')
+    def osMap = [linux: 'linux', macos: 'osx', windows: 'windows']
+
+    outputs.dir 'lib/native'
+    outputs.upToDateWhen { false }
+
+    doLast {
+        osMap.each { outName, jarSuffix ->
+            ['lwjgl-platform-2.9.3', 'jinput-platform-2.0.7'].each { base ->
+                def src = file("$namedJars/${base}-natives-${jarSuffix}.jar")
+                if (!src.isFile()) {
+                    throw new GradleException("natives 源 jar 不存在: $src（可用 -Psourcesector.namedJars= 覆盖目录）")
+                }
+                copy {
+                    from zipTree(src)
+                    into "lib/native/$outName"
+                    include '**/*.dll', '**/*.so', '**/*.dylib', '**/*.jnilib'
+                }
+            }
+        }
+    }
+}
+
+// R3 remap mapping 表打包：SourceSector 全量 tiny → gzip，供 deployToGame 部署。
+// 独立任务（不挂进 build，CI/他机无此本地资产）；源缺失显式报错。
+tasks.register('packFullMapping') {
+    group = 'nanoforge'
+    description = 'gzip SourceSector 全量 mapping 表到 build/nanoforge/game-full.tiny.gz'
+
+    def fullTiny = providers.gradleProperty('sourcesector.fullTiny')
+            .getOrElse('../SourceSector/mapping/build/generated/mappings/windows/ssoptimizer-windows-full.tiny')
+    def output = layout.buildDirectory.file('nanoforge/game-full.tiny.gz')
+
+    outputs.file(output)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        def src = file(fullTiny)
+        if (!src.isFile()) {
+            throw new GradleException("SourceSector 全量 mapping 不存在: $src（可用 -Psourcesector.fullTiny= 覆盖路径）")
+        }
+        def target = output.get().asFile
+        target.parentFile.mkdirs()
+        src.withInputStream { raw ->
+            target.withOutputStream { fileOut ->
+                new java.util.zip.GZIPOutputStream(fileOut).withStream { gz -> gz << raw }
+            }
+        }
+        logger.lifecycle("已打包全量 mapping: $src -> $target")
+    }
+}
+
+// R3 部署：NanoForge jar + 运行时依赖 + mapping 表 → 游戏目录 mods/nanoforge/
+// 用法：./gradlew deployToGame -Pgame.dir=/mnt/store/Games/Starsector098-linux
+tasks.register('deployToGame', Copy) {
+    group = 'nanoforge'
+    description = '部署 NanoForge jar、运行时依赖与 mapping 表到游戏目录 mods/nanoforge/'
+
+    def gameDir = providers.gradleProperty('game.dir')
+
+    dependsOn jar, packFullMapping, unsealLwjgl, mixinJar
+    into { gameDir.map { "$it/mods/nanoforge" }.get() }
+    from jar
+    from(layout.buildDirectory.dir('nanoforge'))
+    from({
+        configurations.runtimeClasspath.filter { dep ->
+            // 游戏目录已提供同名库（lwjgl/jinput/janino/xstream/json/jaxb/txw2/webp 等），
+            // 只部署 NanoForge 独有的运行时设施，避免与游戏 classpath 重复
+            def n = dep.name.toLowerCase()
+            ['retrofuturabootstrap', 'jopt-simple', 'sponge-mixin', 'mixinextras', 'bus-',
+             'core-3.8', 'toml-3.8', 'badiff', 'slf4j', 'log4j-', 'asm'].any { n.contains(it) }
+        }
+    })
+
+    doFirst {
+        if (!gameDir.isPresent()) {
+            throw new GradleException('缺少参数：需 -Pgame.dir=<游戏根目录>')
+        }
+    }
+}
+
+// RFB 系统类加载器对 sealed jar 的密封校验与 lwjgl.jar（manifest 主属性 Sealed: true）
+// 不兼容（同包两类源判定为 Sealing violation）。部署时生成去密封副本
+// build/nanoforge/lwjgl-unsealed.jar，启动脚本以它替换 classpath 中的 lwjgl.jar；
+// 游戏目录原始 lwjgl.jar 不改动。
+tasks.register('unsealLwjgl') {
+    group = 'nanoforge'
+    description = '生成去密封的 lwjgl.jar 副本（RFB 密封校验兼容）'
+
+    def gameDir = providers.gradleProperty('game.dir')
+    def output = layout.buildDirectory.file('nanoforge/lwjgl-unsealed.jar')
+
+    outputs.file(output)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        if (!gameDir.isPresent()) {
+            throw new GradleException('缺少参数：需 -Pgame.dir=<游戏根目录>')
+        }
+        def src = gameDir.map { file("$it/lwjgl.jar") }.get()
+        if (!src.isFile()) {
+            throw new GradleException("游戏目录 lwjgl.jar 不存在: $src")
+        }
+        def target = output.get().asFile
+        target.parentFile.mkdirs()
+        // 逐条目复制，仅重写 manifest（移除主属性 Sealed）
+        def srcJar = new java.util.jar.JarFile(src)
+        try {
+            def manifest = srcJar.manifest
+            if (manifest == null) {
+                throw new GradleException("lwjgl.jar 缺少 manifest: $src")
+            }
+            manifest.mainAttributes.remove(new java.util.jar.Attributes.Name('Sealed'))
+            def out = new java.util.jar.JarOutputStream(new FileOutputStream(target), manifest)
+            try {
+                srcJar.entries().asIterator().each { entry ->
+                    if (entry.name.equalsIgnoreCase('META-INF/MANIFEST.MF')) {
+                        return // manifest 已由构造器写出
+                    }
+                    out.putNextEntry(new java.util.jar.JarEntry(entry.name))
+                    if (!entry.directory) {
+                        srcJar.getInputStream(entry).withStream { it.transferTo(out) }
+                    }
+                    out.closeEntry()
+                }
+            } finally {
+                out.close()
+            }
+        } finally {
+            srcJar.close()
+        }
+        logger.lifecycle("已生成去密封 lwjgl 副本: $target")
+    }
+}
 
 // R2 Patch 工作流：对比原 named jar 与修改后编译产物，生成 NFBP bin patch
 // 用法：./gradlew generatePatches -Ppatch.original=<原named.jar> -Ppatch.patched=<修改后class目录> -Ppatch.output=<输出目录>

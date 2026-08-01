@@ -3,10 +3,12 @@ package io.github.nanoforged.core;
 import io.github.nanoforged.api.CoreModContext;
 import io.github.nanoforged.api.INanoCorePlugin;
 import io.github.nanoforged.core.asm.tweakers.NanoPatcherTransformer;
+import io.github.nanoforged.core.asm.tweakers.NanoRemapTransformer;
 import io.github.nanoforged.core.meta.CoreModMeta;
 import io.github.nanoforged.core.meta.CoreModMetaException;
 import io.github.nanoforged.core.patch.ClassPatch;
 import io.github.nanoforged.core.patch.PatcherManager;
+import io.github.nanoforged.core.remap.NanoRemapContext;
 import io.github.nanoforged.utils.PathUtils;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 import org.apache.logging.log4j.LogManager;
@@ -66,6 +68,12 @@ public class CoreModManager {
         if (!patches.isEmpty()) {
             classLoader.registerTransformer(NanoPatcherTransformer.class.getName());
             LOGGER.info("已注册 {} 个类级 bin patch", patches.size());
+        }
+
+        if (NanoRemapContext.isRemapEnabled()) {
+            NanoRemapContext.loadDefault();
+            classLoader.registerTransformer(NanoRemapTransformer.class.getName());
+            LOGGER.info("已注册 obf→named 全量 remap transformer");
         }
 
         assembly.transformerExclusions().forEach(classLoader::addTransformerExclusion);

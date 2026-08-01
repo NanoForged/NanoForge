@@ -1,6 +1,6 @@
 {
   "minVersion": "0.8",
-  "package": "io.github.nanoforged.mixin.core",
+  "package": "nanoforge.mixin.core",
   "compatibilityLevel": "JAVA_16",
   "mixins": [
     "bootstrap.StarfarerLauncherMixin"

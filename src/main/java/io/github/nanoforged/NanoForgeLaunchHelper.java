@@ -40,8 +40,9 @@ public final class NanoForgeLaunchHelper {
 
     private static void exclusionClass(LaunchClassLoader classLoader){
         // transformer exclusions
+        // 注意：nanoforge.mixin 不得排除——Mixin 子系统需要经 transformer 链
+        // 读取 mixin 类字节码，排除会导致 mixin 被拒绝应用（运行时已验证）
         classLoader.addTransformerExclusion("io.github.nanoforged.core.asm");
-        classLoader.addTransformerExclusion("io.github.nanoforged.mixin");
         classLoader.addTransformerExclusion("org.spongepowered.");
         classLoader.addTransformerExclusion("LZMA.");
         classLoader.addTransformerExclusion("scala.");

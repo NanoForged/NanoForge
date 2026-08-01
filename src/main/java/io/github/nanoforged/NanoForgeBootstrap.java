@@ -35,9 +35,36 @@ public final class NanoForgeBootstrap implements ITweaker {
     public void injectIntoClassLoader(LaunchClassLoader classLoader) {
         LOGGER.info("Tweaker Installed! NanoForge Bootstrapping...");
 
+        classLoader.addURL(resolveMixinJarUrl());
+
         NanoForgeLaunchHelper.configureLaunch(classLoader);
 
         CoreModManager.handleLaunch(classLoader);
+    }
+
+    /**
+     * 定位 NanoForge-mixins.jar（mixin 类与 init 配置的独立包）。
+     *
+     * <p>mixin 类必须经 LaunchClassLoader 加载：RFB 的 Launch 会把本 tweaker 所在包
+     * （io.github.nanoforged）整体注册为 LaunchClassLoader 排除项，因此 mixin 类
+     * 置于独立根包 nanoforge.mixin 下，且该 jar 不在 -classpath 上，部署为主 jar
+     * 同级 runtime/ 子目录，此处显式 addURL。可用 -Dnanoforge.mixinJar= 覆盖路径；
+     * 缺失显式抛错。
+     */
+    private static java.net.URL resolveMixinJarUrl() {
+        String override = System.getProperty("nanoforge.mixinJar");
+        Path mixinJar = override != null
+                ? Path.of(override)
+                : Path.of(getJarLocation()).getParent().resolve("runtime").resolve("NanoForge-mixins.jar");
+        if (!java.nio.file.Files.isRegularFile(mixinJar)) {
+            throw new IllegalStateException("NanoForge-mixins.jar 不存在: " + mixinJar
+                    + "（部署缺失，或可用 -Dnanoforge.mixinJar= 覆盖路径）");
+        }
+        try {
+            return mixinJar.toUri().toURL();
+        } catch (java.net.MalformedURLException e) {
+            throw new IllegalStateException("NanoForge-mixins.jar URL 非法: " + mixinJar, e);
+        }
     }
 
     @Override

@@ -89,5 +89,34 @@ named，仅 deobf 运行时生效。应用前校验原类字节的 SHA-256 基�
 基线不符时**显式抛错**（指明类名、期望/实际哈希与来源 coremod），不静默跳过；
 同一个类被两个 coremod patch 也会在装配期直接报错。
 
+### 部署与启动（R3）
+
+部署到游戏目录（产出 NanoForge jar、运行时依赖、全量 remap 表、
+unsealed lwjgl 与 `runtime/NanoForge-mixins.jar` 到 `<game>/mods/nanoforge/`）：
+
+```bash
+./gradlew deployToGame -Pgame.dir=<游戏目录>
+```
+
+辅助任务（均不挂进 `build`，CI 无本地资产）：
+
+- `packFullMapping`：gzip SourceSector 全量表 → `build/nanoforge/game-full.tiny.gz`
+- `extractGameNatives`：从游戏 vendor natives jar 提取到 `lib/native/{linux,macos,windows}`
+- `unsealLwjgl`：去 lwjgl.jar 密封属性 → `build/nanoforge/lwjgl-unsealed.jar`
+- `generatePatches`：见上文 Patch 节
+
+启动（临时路径，专用启动器见 R4）：游戏目录下 `launch_nanoforge_ss.sh`
+（linux，实机验证）/ `launch_nanoforge_ss.command`（macOS，未验证）。
+关键 JVM 参数：
+
+- `--tweakClass io.github.nanoforged.NanoForgeBootstrap`
+  + `-Djava.system.class.loader=com.gtnewhorizons.retrofuturabootstrap.RfbSystemClassLoader`
+- `-Dnanoforge.remap.obf2named=true` 启用 obf→named 全量 remap
+  （表路径可用 `-Dnanoforge.remap.mapping=` 覆盖）
+- linux 需 `-Dcom.fs.starfarer.settings.linux=true`（OS 分支审计见
+  `design/os-branch-audit.md`）
+- classpath 中 `mods/nanoforge/*.jar` 置前；排除游戏自带 log4j-1.2.9.jar
+  与原 lwjgl.jar（由 lwjgl-unsealed.jar 顶替）
+
 > 旧机制（Java SPI 发现、`@NanoCorePluginInfo` 注解、`IMixinLoader` 接口、
 > `injectData(Map)`）已全部移除，coremod.toml 为唯一入口。

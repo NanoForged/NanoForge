@@ -141,14 +141,55 @@ patched 类字节进入后续 transformer 链
   均为可单测纯逻辑；diff 算法用 badiff（`org.badiff:badiff:1.2.1`，
   纯 Java 无传递依赖）。
 
+### 2.5 全量 remap 接管与运行时适配（R3）
+
+deobf 全量模式自 SSOptimizer 接管：`core/remap` 解析 SourceSector
+三命名空间全量表（`tiny 2 0 obf intermediary named`，成员行 desc 在末列，
+未命名条目省略 named 列并回退为 intermediary），运行时把残留的
+obf/intermediary 引用重定向到 named。
+
+```
+CoreModManager.apply（装配期）
+  │  -Dnanoforge.remap.obf2named=true 时 NanoRemapContext.loadDefault()
+  │    · 表路径 -Dnanoforge.remap.mapping= 覆盖，
+  │      默认 mods/nanoforge/game-full.tiny.gz（packFullMapping 任务产出）
+  │    · 写静态 activeContext() 供 LaunchWrapper 无参实例化读取
+  ▼
+transformer 链顺序：bin patch → obf→named remap → coremod ASM → Mixin
+  ▼
+NanoRemapTransformer（core/asm/tweakers）逐类 remap；失败 WARN 透传，不中断加载
+```
+
+运行时适配（linux 实机冒烟验证过的三个点）：
+
+- **lwjgl 密封**：lwjgl.jar manifest 带 `Sealed: true`，与 RFB 包密封校验冲突
+  （`Sealing violation in already loaded package org.lwjgl.opengles`）。
+  `unsealLwjgl` 任务去除 Sealed 主属性产出 `lwjgl-unsealed.jar`，
+  启动脚本以其顶替原 lwjgl.jar。
+- **日志绑定**：`log4j-slf4j18-impl`（slf4j 1.8 绑定）在 slf4j 2.x 下
+  AbstractMethodError，换 `log4j-slf4j2-impl:2.25.2`；游戏自带
+  log4j-1.2.9.jar 从启动 classpath 排除（与 log4j2 共存冲突）。
+- **mixin jar 拆分**：RFB 的 Launch 会把 tweaker 所在包
+  （`io.github.nanoforged`）整体注册为 LaunchClassLoader 排除项，
+  mixin 类必须经 LaunchClassLoader 加载（否则 PACKAGE_CLASSLOADER_EXCLUSION
+  被拒）。故 mixin 类置于独立根包 `nanoforge.mixin`，与 init 配置单独打成
+  `NanoForge-mixins.jar`（部署在主 jar 同级 `runtime/` 子目录，不在启动脚本
+  -classpath glob 内），由 NanoForgeBootstrap 显式 `addURL` 进
+  LaunchClassLoader；`-Dnanoforge.mixinJar=` 可覆盖路径。
+
+natives：`extractGameNatives` 从游戏 vendor 的
+`lwjgl-platform-2.9.3-natives-{linux,osx,windows}.jar` 与
+`jinput-platform-2.0.7-natives-*.jar` 按 OS 提取到
+`lib/native/{linux,macos,windows}`，游戏字节码与 natives 正交。
+OS 条件分支审计结论见 `os-branch-audit.md`（分支面极小，设驱动属性即全覆盖）。
+
 ## 3. 已排除（不做或不在近期）
 
 | 项 | 原因 |
 |---|---|
-| 跨平台运行时承载（natives / 启动 / OS 分支） | 第三轮；按 1.1 的修正模型，不含字节码对位 |
 | 晚期 Mixin | 无 vanilla 模组加载点，需要时单独立项 |
 | 普通模组（非 coremod）加载 | 游戏原生 mod 加载器已覆盖，NanoForge 不重复造 |
-| 启动路线改造 | 临时路径，等专用启动器 |
+| 启动路线改造 | 临时路径（RFB tweaker + 启动脚本），等专用启动器 |
 
 ## 4. 技术栈基线
 
