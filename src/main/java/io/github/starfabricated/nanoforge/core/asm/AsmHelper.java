@@ -25,11 +25,11 @@ public final  class AsmHelper {
         return cw.toByteArray();
     }
 
-    public  static String getNormalClassName(String className){
+    public  static String toNormalClassName(String className){
         return className.replace("/",".");
     }
 
-    public  static String getInnerClassName(String className){
+    public  static String toInnerClassName(String className){
         return className.replace(".","/");
     }
 

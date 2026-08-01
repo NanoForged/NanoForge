@@ -7,12 +7,11 @@ import org.apache.logging.log4j.Logger;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.io.File;
 
 import static io.github.starfabricated.nanoforge.NanoForgeBootstrap.MAIN_CLASS;
 
-public final class FileUtils {
-    private FileUtils() {}
+public final class PathUtils {
+    private PathUtils() {}
 
     private static final Logger LOGGER = LogManager.getLogger("NanoForge/FileUtils");
     private static final String SAVES_PATH = System.getProperty("com.fs.starfarer.settings.paths.saves");

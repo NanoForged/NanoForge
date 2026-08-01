@@ -6,7 +6,7 @@ import com.google.common.collect.Lists;
 import io.github.starfabricated.nanoforge.NanoForgeBootstrap;
 import io.github.starfabricated.nanoforge.api.IMixinLoader;
 import io.github.starfabricated.nanoforge.api.INanoCorePlugin;
-import io.github.starfabricated.nanoforge.utils.FileUtils;
+import io.github.starfabricated.nanoforge.utils.PathUtils;
 import net.minecraft.launchwrapper.ITweaker;
 import net.minecraft.launchwrapper.Launch;
 import net.minecraft.launchwrapper.LaunchClassLoader;
@@ -25,14 +25,10 @@ import java.util.*;
 public class CoreModManager {
     private static final HashSet<String> MIXINS = new HashSet<>();
 
-    public static final HashMap<String,Object> coreData =new HashMap<>();
-
-
     public static final Logger LOGGER = LogManager.getLogger("NanoForge/CoreMod");
 
 
     private static NanoForgeBootstrap primeTweaker;
-    private static File gameDir;
     private static LaunchClassLoader primeClassloader;
     private static List<NanoPluginWrapper> loadPlugins;
     private static HashBiMap<String,List<String>> pluginMixins;
@@ -46,7 +42,8 @@ public class CoreModManager {
         primeTweaker = bootstrapTweaker;
         primeClassloader = classLoader;
 
-        primeTweaker.injectCascadingTweak("io.github.starfabricated.nanoforge.core.NanoForgeTweaker");
+        // TODO: Patcher System
+        //primeTweaker.injectCascadingTweak("io.github.starfabricated.nanoforge.core.NanoForgeTweaker");
 
         discoverCoreMods();
 
@@ -76,17 +73,15 @@ public class CoreModManager {
 
         loadPlugins = new ArrayList<>();
         pluginMixins = HashBiMap.create();
-        //SPI, like MCML
         ServiceLoader.load(INanoCorePlugin.class,primeClassloader).forEach(CoreModManager::processCorePlugin);
         LOGGER.info("SPI Load done.");
-        //WIP?
     }
 
     /**
      * Skid form FML , but add more check
      */
     private static File setupCoreModDir() {
-        File coreModDir = new File(FileUtils.getModsPath().toFile(), "coremods");
+        File coreModDir = new File(PathUtils.getModsPath().toFile(), "coremods");
 
         try {
             coreModDir = coreModDir.getCanonicalFile();
@@ -103,7 +98,7 @@ public class CoreModManager {
             throw new RuntimeException(String.format("Path exists but is not a directory: %s", coreModDir));
         }
         if (!coreModDir.canWrite() || !coreModDir.canRead()) {
-            throw new RuntimeException(String.format("Coremod directory is not writable or readable: %s", coreModDir));
+            throw new RuntimeException(String.format("Core mod directory is not writable or readable: %s", coreModDir));
         }
         return coreModDir;
     }
@@ -128,28 +123,22 @@ public class CoreModManager {
     private static void processCorePlugin(INanoCorePlugin corePlugin){
         LOGGER.info("Find CorePlugin:{}",corePlugin.getClass().getName());
 
-        INanoCorePlugin.Name annotation_name = corePlugin.getClass().getAnnotation(INanoCorePlugin.Name.class);
-        INanoCorePlugin.SortingIndex annotation_sortingIndex = corePlugin.getClass().getAnnotation(INanoCorePlugin.SortingIndex.class);
-
-        String name = annotation_name != null ? annotation_name.value():corePlugin.getClass().getSimpleName();
-        int sortingIndex = annotation_sortingIndex != null ? annotation_sortingIndex.value() : 0;
+        String name = corePlugin.getName();
 
         //get Mixin configs
         if (corePlugin instanceof IMixinLoader mixinLoader) {
             List<String> mixinConfigs = mixinLoader.getMixinConfigs();
             pluginMixins.put(name,mixinConfigs);
             MIXINS.addAll(mixinConfigs);
-
         }
 
-        NanoPluginWrapper wrapper = new NanoPluginWrapper(name, corePlugin, sortingIndex);
+        NanoPluginWrapper wrapper = new NanoPluginWrapper(corePlugin);
         loadPlugins.add(wrapper);
     }
 
     /**
-     *  IDK what freak this method it is.
      *  if code works don't touch it , it works very good in FML
-     * @param injectTweaker FMLInjectionAndSortingTweaker, but NanoForge
+     * @param injectTweaker FMLInjectionAndSortingTweaker
      */
     public static void injectCoreModTweaks(NanoForgeTweaker injectTweaker) {
         @SuppressWarnings("unchecked")
@@ -163,12 +152,12 @@ public class CoreModManager {
     }
 
     //TODO handleCascadingTweak
+    //Update: No, we shouldn't expose or load tweakers. it will removed in future.
     private static final Map<String,Integer> tweakSorting = new HashMap<>();
 
 
     /**
-     * Sorting tweakers, but more modern ^^
-     * it just work
+     * Sorting tweakers, we use a some workaround method in RFB
      */
     public static void sortTweakList() {
         if (Launch.blackboard.containsKey("TweaksSorted")) {
@@ -190,7 +179,6 @@ public class CoreModManager {
         }));
 
         //In RFB, We must do this shit. because RFB's impl is different of LaunchWrapper
-        // or call this in NanoTweaker's Constructor method , but i will not.
         Launch.blackboard.put("Tweaks", sortedTweakers);
 
         LOGGER.info("Tweaker Sorted.");
@@ -198,28 +186,18 @@ public class CoreModManager {
     }
 
 
-    /**
-     *  TweakerWrapper
-     *  Also skid form FML
-     */
+
     private static class NanoPluginWrapper implements ITweaker {
         public final String name;
         public final INanoCorePlugin corePlugin;
-        public final List<String> predepends;
         public final int sortIndex;
 
-        public NanoPluginWrapper(String name, INanoCorePlugin corePlugin,  int sortIndex, String... predepends) {
-            this.name = name;
+        public NanoPluginWrapper(INanoCorePlugin corePlugin) {
+            this.name = corePlugin.getName();
             this.corePlugin = corePlugin;
-            this.sortIndex = sortIndex;
-            this.predepends = Lists.newArrayList(predepends);
+            this.sortIndex = corePlugin.getPriority();
         }
 
-        @Override
-        public String toString()
-        {
-            return String.format("%s {%s}", this.name, this.predepends);
-        }
 
         @Override
         public void acceptOptions(List<String> args, File gameDir, File assetsDir, String profile){
@@ -232,45 +210,40 @@ public class CoreModManager {
                 throw new IllegalStateException("Core mod instance is null");
             }
 
-            String[] asmTransformerClass = corePlugin.getASMTransformerClass();
+            var transformerExclusion = corePlugin.getTransformerExclusion();
+            var asmTransformerClass = corePlugin.getASMTransformerClass();
 
-            INanoCorePlugin.TransformerExclusions annotation_transformerExclusions = corePlugin.getClass().getAnnotation(INanoCorePlugin.TransformerExclusions.class);
-            if (annotation_transformerExclusions !=null) {
-                for (String exclusionClass : annotation_transformerExclusions.value())
-                    classLoader.addTransformerExclusion(exclusionClass);
+
+
+            if (!transformerExclusion.isEmpty()){
+                transformerExclusion.forEach(classLoader::addTransformerExclusion);
             }
 
-            //reg plugin transformer
-            if (asmTransformerClass != null) {
-                for (String transformer : asmTransformerClass) {
-                    if (transformer != null && !transformer.trim().isEmpty()) {
-                        //classLoader.addTransformerExclusion(transformer); //idk
-                        classLoader.registerTransformer(transformer);
-                    }
-                }
+            if (!asmTransformerClass.isEmpty()){
+                asmTransformerClass.forEach(classLoader::registerTransformer);
             }
+
+
 
             //building data
             Map<String, Object> data = new HashMap<>();
             data.put("gameData", GameData.getData());
-            data.put("coremodList", loadPlugins);
+            data.put("pluginList", loadPlugins);
             data.put("mixinOwnerList",pluginMixins);
 
             //IDK what happen early class loaded will make...
-            //so pls don't touch any game class in there, using reflection if you needed.
+            //so please don't touch any game class in there, using reflection if you needed.
             LOGGER.info("Injecting Data to {}",corePlugin.getClass().getName());
             corePlugin.injectData(data);
         }
 
         @Override
-        public String getLaunchTarget()
-        {
+        public String getLaunchTarget() {
             return "";
         }
 
         @Override
-        public String[] getLaunchArguments()
-        {
+        public String[] getLaunchArguments() {
             return new String[0];
         }
 

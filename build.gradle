@@ -4,8 +4,8 @@ plugins {
     id 'application'
 }
 
-group = 'com.nfs'
-version = '1.0-SNAPSHOT'
+group = 'io.github.nanoforged'
+version = '0.1.0-SNAPSHOT'
 
 sourceCompatibility = '17'
 targetCompatibility = '17'
@@ -27,21 +27,18 @@ repositories {
 }
 project.ext.lwjglVersion = "2.9.4+legacyfabric.3"
 
-configurations {
-    lwjglNative
-}
+
 
 dependencies {
 
     //LaunchWrapper but FOSS
     implementation('com.gtnewhorizons.retrofuturabootstrap:RetroFuturaBootstrap:1.0.12')
 
-    //The greatest ASM Framework in Java game history
     //forked by FabricMC
     implementation "net.fabricmc:sponge-mixin:0.16.3+mixin.0.8.7"
     implementation(annotationProcessor("io.github.llamalad7:mixinextras-common:0.5.0"))
 
-    // EventBus, part of (Neo)forge
+    // EventBus
     implementation('net.neoforged:bus:8.0.5')
 
     implementation("com.google.auto.service:auto-service:1.1.1")
@@ -87,13 +84,11 @@ dependencies {
     implementation "org.lwjgl.lwjgl:lwjgl_util:$lwjglVersion"
     //implementation "org.lwjgl.lwjgl:parent:$lwjglVersion"
     implementation "org.lwjgl.lwjgl:lwjgl-platform:$lwjglVersion"
-    lwjglNative "org.lwjgl.lwjgl:lwjgl-platform:$lwjglVersion"
+    implementation "org.lwjgl.lwjgl:lwjgl-platform:$lwjglVersion"
 
     //game jar
     runtimeOnly fileTree(dir: 'lib/gameJar', include: ['*.jar'])
 
-    //TODO: we have api src so...
-    //implementation(":game-api")
 
     //it just work
     //implementation fileTree(dir: 'lib', include: ['*.jar'])

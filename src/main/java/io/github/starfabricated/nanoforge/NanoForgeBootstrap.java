@@ -1,6 +1,5 @@
 package io.github.starfabricated.nanoforge;
 
-import io.github.starfabricated.nanoforge.api.INanoCorePlugin;
 import io.github.starfabricated.nanoforge.core.CoreModManager;
 import net.minecraft.launchwrapper.ITweaker;
 import net.minecraft.launchwrapper.Launch;
@@ -15,9 +14,8 @@ import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.List;
 
-import static io.github.starfabricated.nanoforge.utils.FileUtils.*;
+import static io.github.starfabricated.nanoforge.utils.PathUtils.*;
 
-@INanoCorePlugin.SortingIndex(-100)
 public final class NanoForgeBootstrap implements ITweaker {
     private static final Logger LOGGER = LogManager.getLogger("NanoForge/Tweaker");
     private static URI jarLocation;
@@ -38,9 +36,8 @@ public final class NanoForgeBootstrap implements ITweaker {
     public void injectIntoClassLoader(LaunchClassLoader classLoader) {
         LOGGER.info("Tweaker Installed! NanoForge Bootstrapping...");
 
-        //just do it
         NanoForgeLaunchHelper.configureLaunch(classLoader);
-        //make CorePlugin work
+
         CoreModManager.handleLaunch(classLoader,this);
     }
 

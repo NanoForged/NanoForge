@@ -3,7 +3,7 @@ package io.github.starfabricated.nanoforge;
 
 import com.llamalad7.mixinextras.MixinExtrasBootstrap;
 import io.github.starfabricated.nanoforge.core.GameData;
-import io.github.starfabricated.nanoforge.utils.FileUtils;
+import io.github.starfabricated.nanoforge.utils.PathUtils;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -15,10 +15,9 @@ public final class NanoForgeLaunchHelper {
 
     private NanoForgeLaunchHelper(){}
 
-    //i called this 'FMLLaunchHandler' ...
     public static void configureLaunch(LaunchClassLoader classLoader) {
         LOGGER.info("Starting configure Launch...");
-        //you can read func name, right?
+
         initMixin();
 
         //try to make everything work, like lwjgl or SLF4j
@@ -62,10 +61,10 @@ public final class NanoForgeLaunchHelper {
     }
 
     private static void buildingGameData(){
-        GameData.setData("gameHome", FileUtils.getGameHome().toString());
-        GameData.setData("savesPath",FileUtils.getSavesPath().toString());
-        GameData.setData("modsPath",FileUtils.getModsPath().toString());
-        GameData.setData("screenshotsPath",FileUtils.getScreenshotsPath().toString());
-        GameData.setData("installType",FileUtils.isClassicInstall() ? "classic":"other");
+        GameData.setData("gameHome", PathUtils.getGameHome().toString());
+        GameData.setData("savesPath", PathUtils.getSavesPath().toString());
+        GameData.setData("modsPath", PathUtils.getModsPath().toString());
+        GameData.setData("screenshotsPath", PathUtils.getScreenshotsPath().toString());
+        GameData.setData("installType", PathUtils.isClassicInstall() ? "classic":"other");
     }
 }

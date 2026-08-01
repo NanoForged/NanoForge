@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+//TODO Remove this
 public class GameData {
     private static final HashMap<String,String> data =new HashMap<>();
     public static Map<String,String> getData(){
