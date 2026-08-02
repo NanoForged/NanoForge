@@ -30,6 +30,8 @@ public final class JvmArgsOptions {
     public static final String DEFAULT_MODS_PATH = "./mods";
     /** 默认日志路径属性，脚本基线为游戏根目录本身。 */
     public static final String DEFAULT_LOGS_PATH = ".";
+    /** 默认 deobf（全量反混淆运行时重映射）开关，脚本基线为开启。 */
+    public static final boolean DEFAULT_DEOBF = true;
 
     private final String heapMin;
     private final String heapMax;
@@ -40,6 +42,7 @@ public final class JvmArgsOptions {
     private final String screenshotsPath;
     private final String modsPath;
     private final String logsPath;
+    private final boolean deobf;
 
     private JvmArgsOptions(Builder builder) {
         this.heapMin = requireText(builder.heapMin, "heapMin");
@@ -51,6 +54,7 @@ public final class JvmArgsOptions {
         this.screenshotsPath = requireText(builder.screenshotsPath, "screenshotsPath");
         this.modsPath = requireText(builder.modsPath, "modsPath");
         this.logsPath = requireText(builder.logsPath, "logsPath");
+        this.deobf = builder.deobf;
     }
 
     private static String requireText(String value, String field) {
@@ -106,6 +110,16 @@ public final class JvmArgsOptions {
     }
 
     /**
+     * 是否启用全量 deobf 运行时重映射（-Dnanoforge.remap.obf2named）。
+     *
+     * <p>脚本基线为开启；关闭后模板不产出该属性，游戏以混淆名运行
+     * （供对照调试与兼容回退）。
+     */
+    public boolean deobf() {
+        return deobf;
+    }
+
+    /**
      * 创建构造器；各字段预置脚本基线默认值，仅显式覆盖需要的项。
      */
     public static Builder builder() {
@@ -126,6 +140,7 @@ public final class JvmArgsOptions {
         private String screenshotsPath = DEFAULT_SCREENSHOTS_PATH;
         private String modsPath = DEFAULT_MODS_PATH;
         private String logsPath = DEFAULT_LOGS_PATH;
+        private boolean deobf = DEFAULT_DEOBF;
 
         private Builder() {
         }
@@ -181,6 +196,12 @@ public final class JvmArgsOptions {
         /** 覆盖 -Dcom.fs.starfarer.settings.paths.logs 日志路径。 */
         public Builder logsPath(String logsPath) {
             this.logsPath = logsPath;
+            return this;
+        }
+
+        /** 覆盖 deobf 全量反混淆开关（默认开启，见 {@link JvmArgsOptions#DEFAULT_DEOBF}）。 */
+        public Builder deobf(boolean deobf) {
+            this.deobf = deobf;
             return this;
         }
 

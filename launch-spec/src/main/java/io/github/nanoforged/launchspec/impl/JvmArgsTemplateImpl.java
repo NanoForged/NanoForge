@@ -85,7 +85,10 @@ public final class JvmArgsTemplateImpl implements JvmArgsTemplate {
 
         // RFB 系统类加载器与游戏平台分支属性（脚本 127-130 行基线，固定）
         args.add("-Djava.system.class.loader=com.gtnewhorizons.retrofuturabootstrap.RfbSystemClassLoader");
-        args.add("-Dnanoforge.remap.obf2named=true");
+        // deobf 全量反混淆开关（脚本基线开启；可覆盖，关闭时不产出该属性）
+        if (options.deobf()) {
+            args.add("-Dnanoforge.remap.obf2named=true");
+        }
         args.add("-Dssoptimizer.font.ttf.enable=true");
         args.add("-Dcom.fs.starfarer.settings.linux=true");
 

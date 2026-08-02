@@ -86,6 +86,17 @@ class JvmArgsTemplateTest {
     }
 
     @Test
+    void deobfDisabledOmitsRemapProperty() {
+        List<String> args = template.resolve(JvmArgsOptions.builder().deobf(false).build());
+
+        assertFalse(args.stream().anyMatch(a -> a.startsWith("-Dnanoforge.remap.obf2named")),
+                "deobf=false 时不得产出 obf2named 属性，实际: " + args);
+        // 其余基线项不受影响
+        assertTrue(args.contains("-Djava.system.class.loader=com.gtnewhorizons.retrofuturabootstrap.RfbSystemClassLoader"));
+        assertTrue(args.contains("-Dssoptimizer.font.ttf.enable=true"));
+    }
+
+    @Test
     void nullOptionsThrows() {
         assertThrows(NullPointerException.class, () -> template.resolve(null));
     }
