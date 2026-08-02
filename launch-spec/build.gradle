@@ -1,0 +1,41 @@
+// 启动规格库：游戏安装探测/校验、classpath 组装、JVM 参数基线、启动前置检查。
+// 纯 Java 17 库，无第三方运行时依赖（仅测试依赖 JUnit），随 maven-publish 独立发布，
+// 供 NanoLauncher（Compose Desktop）与无头 CLI 消费。
+plugins {
+    id 'java'
+    id 'maven-publish'
+}
+
+// 与根项目一致的坐标；发布物为 io.github.nanoforged:launch-spec:<version>
+group = 'io.github.nanoforged'
+version = '0.1.0-SNAPSHOT'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://maven.aliyun.com/repository/public/' }
+    maven { url 'https://maven.aliyun.com/repository/central' }
+}
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.13.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// 与根项目一致的发布配置：./gradlew :launch-spec:publishToMavenLocal
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+        }
+    }
+}

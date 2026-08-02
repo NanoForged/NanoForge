@@ -1,1 +1,4 @@
 rootProject.name = 'NanoForge'
+
+// :launch-spec 为独立发布的「启动规格」纯 Java 库（被 NanoLauncher 与无头 CLI 消费）
+include 'launch-spec'
