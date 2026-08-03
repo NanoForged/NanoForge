@@ -55,6 +55,15 @@ public class CoreModManager {
         apply(classLoader, assembly);
     }
 
+    /**
+     * 应用装配计划到 LaunchClassLoader 与 Mixin。
+     *
+     * <p>transformer 链头部不变量：NanoForge 自身 transformer（bin patch →
+     * obf→named remap）必须先于一切 coremod transformer 注册，NanoForge 是整条
+     * ASM 链的头部处理器。patch 按 named 命中游戏类、remap 把按 obf 编译的
+     * coremod 字节码拉进 named 命名空间，后续 coremod ASM/Mixin 才统一在 named
+     * 下工作——注册次序是本装配的硬前提，禁止调整。
+     */
     private static void apply(LaunchClassLoader classLoader, CoreModAssembly assembly) {
         for (CoreModMeta meta : assembly.sortedMods()) {
             try {
@@ -64,6 +73,27 @@ public class CoreModManager {
             }
         }
 
+        registerPipeline(classLoader, assembly);
+
+        for (CoreModMeta meta : assembly.sortedMods()) {
+            INanoCorePlugin plugin = instantiate(meta, classLoader);
+            LOGGER.info("CoreMod onLoad: {}", meta.id());
+            plugin.onLoad(buildContext(meta));
+        }
+    }
+
+    /**
+     * 注册 NanoForge 自身 transformer 与 coremod 声明的 transformer/Mixin 到 LaunchClassLoader。
+     *
+     * <p>顺序固定为：bin patch（{@link NanoPatcherTransformer}）→ obf→named remap
+     * （{@link NanoRemapTransformer}）→ coremod ASM transformer → Mixin config。
+     * 前两者是 NanoForge 自身的链头部处理器，必须先于一切 coremod 字节码处理器注册；
+     * remap 段还依赖本方法先执行 {@link NanoRemapContext#loadDefault()} 写入运行时
+     * 生效上下文，供 LaunchWrapper 无参实例化的 transformer 读取。
+     *
+     * <p>包可见：注册动作不触碰插件生命周期，供注册顺序单测直接调用以验证链头部不变量。
+     */
+    static void registerPipeline(LaunchClassLoader classLoader, CoreModAssembly assembly) {
         Map<String, ClassPatch> patches = PatcherManager.load(assembly.sortedMods());
         if (!patches.isEmpty()) {
             classLoader.registerTransformer(NanoPatcherTransformer.class.getName());
@@ -85,12 +115,6 @@ public class CoreModManager {
         assembly.mixinConfigs().forEach(Mixins::addConfiguration);
         if (!assembly.mixinConfigs().isEmpty()) {
             LOGGER.info("已登记 {} 个 Mixin config", assembly.mixinConfigs().size());
-        }
-
-        for (CoreModMeta meta : assembly.sortedMods()) {
-            INanoCorePlugin plugin = instantiate(meta, classLoader);
-            LOGGER.info("CoreMod onLoad: {}", meta.id());
-            plugin.onLoad(buildContext(meta));
         }
     }
 

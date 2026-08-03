@@ -72,6 +72,25 @@ class NanoRemapContextTest {
     }
 
     @Test
+    void remapEnabledDefaultsTrueAndOnlyExplicitFalseDisables() {
+        System.clearProperty(NanoRemapContext.REMAP_ENABLED_PROPERTY);
+        try {
+            // 缺省开启
+            assertTrue(NanoRemapContext.isRemapEnabled());
+            // 仅显式 "false"（忽略大小写）关闭
+            System.setProperty(NanoRemapContext.REMAP_ENABLED_PROPERTY, "false");
+            assertTrue(!NanoRemapContext.isRemapEnabled());
+            System.setProperty(NanoRemapContext.REMAP_ENABLED_PROPERTY, "FALSE");
+            assertTrue(!NanoRemapContext.isRemapEnabled());
+            // 其他显式值一律视为开启
+            System.setProperty(NanoRemapContext.REMAP_ENABLED_PROPERTY, "true");
+            assertTrue(NanoRemapContext.isRemapEnabled());
+        } finally {
+            System.clearProperty(NanoRemapContext.REMAP_ENABLED_PROPERTY);
+        }
+    }
+
+    @Test
     void remapRewritesObfReferencesAndSkipsSafePrefixes() {
         TinyV2MappingRepository repo = TinyV2MappingRepository.loadFromResource(
                 new java.io.ByteArrayInputStream(TABLE.getBytes(StandardCharsets.UTF_8)), "test.tiny");

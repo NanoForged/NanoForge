@@ -18,7 +18,7 @@ import java.util.Objects;
  * 不打进 jar（本地资产，CI 无此文件）。
  */
 public final class NanoRemapContext {
-    /** 全量 remap 开关的系统属性，置 {@code true} 时启用 obf→named mod 字节码覆写 */
+    /** 全量 remap 开关的系统属性：缺省启用 obf→named mod 字节码覆写，仅显式 {@code "false"}（忽略大小写）时关闭，用于 obf 运行时对比调试 */
     public static final String REMAP_ENABLED_PROPERTY = "nanoforge.remap.obf2named";
     /** mapping 表路径覆盖的系统属性；缺省为 {@code <mods>/nanoforge/game-full.tiny.gz} */
     public static final String REMAP_MAPPING_PROPERTY = "nanoforge.remap.mapping";
@@ -43,10 +43,24 @@ public final class NanoRemapContext {
     }
 
     /**
+     * 当前上下文使用的映射仓库。
+     *
+     * <p>供查询侧（如 coremod 的 {@code MappingResolver}）读取；
+     * 双向 obf↔named 索引在 {@link TinyV2MappingRepository} 加载表时建立。
+     */
+    public MappingRepository repository() {
+        return repository;
+    }
+
+    /**
      * 判断 obf→named 全量 remap 是否启用。
+     *
+     * <p>默认开启；仅当系统属性 {@value #REMAP_ENABLED_PROPERTY} 显式为
+     * {@code "false"}（忽略大小写）时关闭，供 obf 运行时对比调试使用。
      */
     public static boolean isRemapEnabled() {
-        return Boolean.getBoolean(REMAP_ENABLED_PROPERTY);
+        String value = System.getProperty(REMAP_ENABLED_PROPERTY);
+        return value == null || !"false".equalsIgnoreCase(value);
     }
 
     /**
@@ -71,8 +85,9 @@ public final class NanoRemapContext {
                 ? Path.of(override)
                 : PathUtils.getModsPath().resolve("nanoforge").resolve(DEFAULT_MAPPING_FILE_NAME);
         if (!java.nio.file.Files.isRegularFile(mappingPath)) {
-            throw new MappingLookupException("remap 已开启（-D" + REMAP_ENABLED_PROPERTY + "=true）但 mapping 表不存在: "
-                    + mappingPath + "（可用 -D" + REMAP_MAPPING_PROPERTY + " 覆盖路径，或执行 deployToGame 部署）");
+            throw new MappingLookupException("remap 默认开启但 mapping 表不存在: "
+                    + mappingPath + "（可用 -D" + REMAP_MAPPING_PROPERTY + " 覆盖路径，或执行 deployToGame 部署；"
+                    + "确需关闭可设 -D" + REMAP_ENABLED_PROPERTY + "=false）");
         }
 
         long loadStartNanos = System.nanoTime();
