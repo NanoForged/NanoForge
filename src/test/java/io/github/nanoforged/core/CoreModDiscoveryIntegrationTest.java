@@ -5,6 +5,8 @@ import io.github.nanoforged.api.INanoCorePlugin;
 import io.github.nanoforged.core.fake.FakePluginAlpha;
 import io.github.nanoforged.core.meta.CoreModMeta;
 import io.github.nanoforged.core.meta.CoreModMetaException;
+import io.github.nanoforged.core.remap.MappingResolverImpl;
+import io.github.nanoforged.core.remap.TinyV2MappingRepository;
 import org.apache.logging.log4j.LogManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -85,7 +87,8 @@ class CoreModDiscoveryIntegrationTest {
             Object instance = clazz.getDeclaredConstructor().newInstance();
             INanoCorePlugin plugin = assertInstanceOf(INanoCorePlugin.class, instance);
             plugin.onLoad(new CoreModContext(alpha, tempDir, tempDir, tempDir, tempDir,
-                    LogManager.getLogger("CoreMod/alpha")));
+                    LogManager.getLogger("CoreMod/alpha"),
+                    new MappingResolverImpl(TinyV2MappingRepository.of(List.of()))));
         }
         assertEquals(List.of("alpha"), FakePluginAlpha.LOADED);
     }

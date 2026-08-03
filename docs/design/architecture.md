@@ -75,10 +75,16 @@ CoreModAssembly                     纯数据装配计划（aggregated exclusion
   ▼
 1. coremod jar addURL → LaunchClassLoader
 2. PatcherManager.load() 读取各 coremod [patch] entries → NanoPatcherTransformer 注册（链最前）
-3. transformerExclusions / asmTransformers 按序注册
-4. mixinConfigs 统一登记（Early Mixin）
-5. pluginClass 实例化（公开无参构造）→ 按依赖序 onLoad(CoreModContext)
+3. remap 默认启用：NanoRemapContext.loadDefault() → NanoRemapTransformer 注册
+4. transformerExclusions / asmTransformers 按序注册
+5. mixinConfigs 统一登记（Early Mixin）
+6. pluginClass 实例化（公开无参构造）→ 按依赖序 onLoad(CoreModContext)
 ```
+
+> **链头部不变量**：2、3 步的 NanoForge 自身 transformer（patcher → remap）必须先于
+> 一切 coremod transformer（第 4 步）注册——patch 按 named 命中游戏类、remap 把按
+> obf 编译的 coremod 字节码拉进 named 命名空间，后续 coremod ASM/Mixin 才统一在
+> named 下工作。注册顺序由 `CoreModManager.registerPipeline` 固化并有注册顺序单测守卫。
 
 设计要点：
 
@@ -143,22 +149,29 @@ patched 类字节进入后续 transformer 链
 
 ### 2.5 全量 remap 接管与运行时适配（R3）
 
-deobf 全量模式自 SSOptimizer 接管：`core/remap` 解析 SourceSector
+deobf 默认环境自 SSOptimizer 接管：`core/remap` 解析 SourceSector
 三命名空间全量表（`tiny 2 0 obf intermediary named`，成员行 desc 在末列，
 未命名条目省略 named 列并回退为 intermediary），运行时把残留的
-obf/intermediary 引用重定向到 named。
+obf/intermediary 引用重定向到 named。remap **默认开启**
+（`-Dnanoforge.remap.obf2named=false` 显式关闭，仅用于 obf 运行时对比调试）。
 
 ```
 CoreModManager.apply（装配期）
-  │  -Dnanoforge.remap.obf2named=true 时 NanoRemapContext.loadDefault()
+  │  默认启用时 NanoRemapContext.loadDefault()
   │    · 表路径 -Dnanoforge.remap.mapping= 覆盖，
   │      默认 mods/nanoforge/game-full.tiny.gz（packFullMapping 任务产出）
   │    · 写静态 activeContext() 供 LaunchWrapper 无参实例化读取
   ▼
-transformer 链顺序：bin patch → obf→named remap → coremod ASM → Mixin
+transformer 链顺序（头部不变量）：bin patch → obf→named remap → coremod ASM → Mixin
   ▼
 NanoRemapTransformer（core/asm/tweakers）逐类 remap；失败 WARN 透传，不中断加载
 ```
+
+**适用范围边界**：remap 通道只覆盖经过 LaunchClassLoader transformer 链的
+字节码——coremod 自身的 patch/ASM/Mixin 目标与 coremod jar 类。普通 mod
+（`mods/*/jars` 由游戏自建 URLClassLoader 加载，不过 LCL 链）不在本通道内，
+**必须按 named 命名空间编译**；obf 编译普通 mod 的运行时 remap 通道为后续阶段，
+不在当前架构承诺内。
 
 运行时适配（linux 实机冒烟验证过的三个点）：
 
@@ -203,6 +216,7 @@ OS 条件分支审计结论见 `os-branch-audit.md`（分支面极小，设驱�
 |---|---|
 | 晚期 Mixin | 无 vanilla 模组加载点，需要时单独立项 |
 | 普通模组（非 coremod）加载 | 游戏原生 mod 加载器已覆盖，NanoForge 不重复造 |
+| obf 编译普通 mod 的运行时 remap | 普通 mod 不过 LCL 链，必须按 named 编译；obf remap 通道为后续阶段 |
 | 启动路线改造 | 临时路径（RFB tweaker + 启动脚本），等专用启动器 |
 
 ## 4. 技术栈基线

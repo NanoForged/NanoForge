@@ -2,13 +2,16 @@ package io.github.nanoforged.core;
 
 import io.github.nanoforged.api.CoreModContext;
 import io.github.nanoforged.api.INanoCorePlugin;
+import io.github.nanoforged.api.mapping.MappingResolver;
 import io.github.nanoforged.core.asm.tweakers.NanoPatcherTransformer;
 import io.github.nanoforged.core.asm.tweakers.NanoRemapTransformer;
 import io.github.nanoforged.core.meta.CoreModMeta;
 import io.github.nanoforged.core.meta.CoreModMetaException;
 import io.github.nanoforged.core.patch.ClassPatch;
 import io.github.nanoforged.core.patch.PatcherManager;
+import io.github.nanoforged.core.remap.MappingResolverImpl;
 import io.github.nanoforged.core.remap.NanoRemapContext;
+import io.github.nanoforged.core.remap.TinyV2MappingRepository;
 import io.github.nanoforged.utils.PathUtils;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 import org.apache.logging.log4j.LogManager;
@@ -152,7 +155,26 @@ public class CoreModManager {
                 PathUtils.getSavesPath(),
                 PathUtils.getModsPath(),
                 PathUtils.getScreenshotsPath(),
-                LogManager.getLogger("CoreMod/" + meta.id()));
+                LogManager.getLogger("CoreMod/" + meta.id()),
+                buildMappingResolver());
+    }
+
+    /**
+     * 装配 coremod 可见的 mapping 查询入口。
+     *
+     * <p>remap 启用时绑定运行时生效上下文的全量映射仓库；此时上下文缺失属于装配
+     * 顺序被破坏，显式抛错。remap 禁用时给空表（恒 empty），不做 null 与兜底猜测。
+     */
+    private static MappingResolver buildMappingResolver() {
+        if (!NanoRemapContext.isRemapEnabled()) {
+            return new MappingResolverImpl(TinyV2MappingRepository.of(List.of()));
+        }
+        NanoRemapContext active = NanoRemapContext.activeContext();
+        if (active == null) {
+            throw new IllegalStateException(
+                    "remap 已启用但上下文未加载（NanoRemapContext.loadDefault 必须先于 buildContext 执行）");
+        }
+        return new MappingResolverImpl(active.repository());
     }
 
     /**

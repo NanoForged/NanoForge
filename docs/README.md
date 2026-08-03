@@ -121,8 +121,8 @@ unsealed lwjgl 与 `runtime/NanoForge-mixins.jar` 到 `<game>/mods/nanoforge/`�
 
 - `--tweakClass io.github.nanoforged.NanoForgeBootstrap`
   + `-Djava.system.class.loader=com.gtnewhorizons.retrofuturabootstrap.RfbSystemClassLoader`
-- `-Dnanoforge.remap.obf2named=true` 启用 obf→named 全量 remap
-  （表路径可用 `-Dnanoforge.remap.mapping=` 覆盖）
+- `-Dnanoforge.remap.obf2named=false` 关闭 obf→named 全量 remap（**默认开启**，
+  仅显式 `false` 用于 obf 运行时对比调试；表路径可用 `-Dnanoforge.remap.mapping=` 覆盖）
 - linux 需 `-Dcom.fs.starfarer.settings.linux=true`（OS 分支审计见
   `design/os-branch-audit.md`）
 - classpath 中 `mods/nanoforge/*.jar` 置前；排除游戏自带 log4j-1.2.9.jar
