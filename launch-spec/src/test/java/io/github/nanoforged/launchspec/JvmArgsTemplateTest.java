@@ -86,11 +86,13 @@ class JvmArgsTemplateTest {
     }
 
     @Test
-    void deobfDisabledOmitsRemapProperty() {
+    void deobfDisabledEmitsExplicitFalse() {
         List<String> args = template.resolve(JvmArgsOptions.builder().deobf(false).build());
 
-        assertFalse(args.stream().anyMatch(a -> a.startsWith("-Dnanoforge.remap.obf2named")),
-                "deobf=false 时不得产出 obf2named 属性，实际: " + args);
+        // NanoForge 缺省开启 remap，关闭必须显式产出 false，否则关闭选项静默失效
+        assertTrue(args.contains("-Dnanoforge.remap.obf2named=false"),
+                "deobf=false 时应显式产出 obf2named=false，实际: " + args);
+        assertFalse(args.contains("-Dnanoforge.remap.obf2named=true"));
         // 其余基线项不受影响
         assertTrue(args.contains("-Djava.system.class.loader=com.gtnewhorizons.retrofuturabootstrap.RfbSystemClassLoader"));
         assertTrue(args.contains("-Dssoptimizer.font.ttf.enable=true"));

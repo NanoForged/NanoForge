@@ -112,8 +112,8 @@ public final class JvmArgsOptions {
     /**
      * 是否启用全量 deobf 运行时重映射（-Dnanoforge.remap.obf2named）。
      *
-     * <p>脚本基线为开启；关闭后模板不产出该属性，游戏以混淆名运行
-     * （供对照调试与兼容回退）。
+     * <p>NanoForge 缺省开启 remap；模板始终显式产出 true/false，
+     * 关闭时游戏以混淆名运行（供对照调试与兼容回退）。
      */
     public boolean deobf() {
         return deobf;
