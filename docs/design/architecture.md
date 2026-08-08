@@ -167,11 +167,15 @@ transformer 链顺序（头部不变量）：bin patch → obf→named remap →
 NanoRemapTransformer（core/asm/tweakers）逐类 remap；失败 WARN 透传，不中断加载
 ```
 
-**适用范围边界**：remap 通道只覆盖经过 LaunchClassLoader transformer 链的
-字节码——coremod 自身的 patch/ASM/Mixin 目标与 coremod jar 类。普通 mod
-（`mods/*/jars` 由游戏自建 URLClassLoader 加载，不过 LCL 链）不在本通道内，
-**必须按 named 命名空间编译**；obf 编译普通 mod 的运行时 remap 通道为后续阶段，
-不在当前架构承诺内。
+**适用范围边界**：remap 通道覆盖经过 LaunchClassLoader transformer 链的
+字节码——coremod 自身的 patch/ASM/Mixin 目标、coremod jar 类，以及普通 mod
+的 jar 类。普通 mod 原版由游戏自建 URLClassLoader 加载（不过 LCL 链），
+`ScriptStoreMixin`（nanoforge.mixin.core.bootstrap）在 `ScriptStore.createSourceClassLoader()`
+（模组脚本类加载器装配咽喉点，loadScripts 与 ScriptLoadingTask 两条路径共用）
+把启用模组的 jar 挂载进 LaunchClassLoader，使模组类经父委托走 LCL 加载并
+完成 obf→named remap（仅 remap 上下文生效时挂载，obf 运行模式保持原版语义）。
+已知边界：模组随 jar 携带 .java 源码由游戏内 Janino 运行时编译的路径不经过
+字节码 transformer，此类模组须按 named 命名空间编写源码。
 
 运行时适配（linux 实机冒烟验证过的三个点）：
 
@@ -216,7 +220,7 @@ OS 条件分支审计结论见 `os-branch-audit.md`（分支面极小，设驱�
 |---|---|
 | 晚期 Mixin | 无 vanilla 模组加载点，需要时单独立项 |
 | 普通模组（非 coremod）加载 | 游戏原生 mod 加载器已覆盖，NanoForge 不重复造 |
-| obf 编译普通 mod 的运行时 remap | 普通 mod 不过 LCL 链，必须按 named 编译；obf remap 通道为后续阶段 |
+| 模组 Janino 源码编译路径的 remap | 游戏内运行时编译不过字节码 transformer，须按 named 编写源码 |
 | 启动路线改造 | 临时路径（RFB tweaker + 启动脚本），等专用启动器 |
 
 ## 4. 技术栈基线

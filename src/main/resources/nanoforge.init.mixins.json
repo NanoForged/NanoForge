@@ -3,6 +3,7 @@
   "package": "nanoforge.mixin.core",
   "compatibilityLevel": "JAVA_16",
   "mixins": [
-    "bootstrap.StarfarerLauncherMixin"
+    "bootstrap.StarfarerLauncherMixin",
+    "bootstrap.ScriptStoreMixin"
   ]
 }
