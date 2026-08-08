@@ -82,6 +82,56 @@ class BytecodeRemapperTest {
     }
 
     @Test
+    void obfClassNameStringsAreRewrittenToNamed() {
+        BytecodeRemapper remapper = new BytecodeRemapper(repository(), MappingDirection.OBFUSCATED_TO_NAMED);
+
+        BytecodeRemapper.RemappedClass result = remapper.remapClass(modClassBytesWithObfStrings());
+
+        assertTrue(result.modified());
+
+        // 逐指令验证：slash/dot 两种形态的 obf 类名字符串被改写为 named 且保持原形态；
+        // 非类名字符串（含 / 的路径、无 . 的普通串）原样保留
+        List<String> ldcStrings = new java.util.ArrayList<>();
+        new ClassReader(result.bytecode()).accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                             String signature, String[] exceptions) {
+                return new MethodVisitor(Opcodes.ASM9) {
+                    @Override
+                    public void visitLdcInsn(Object value) {
+                        if (value instanceof String stringValue) {
+                            ldcStrings.add(stringValue);
+                        }
+                    }
+                };
+            }
+        }, 0);
+        assertEquals(List.of("com/example/Engine", "com.example.Engine",
+                "data/config/settings.json", "plainText"), ldcStrings);
+    }
+
+    /** 合成一个 mod 类：LDC 载入 slash/dot 两种形态的 obf 类名字符串及两个无关字符串 */
+    private static byte[] modClassBytesWithObfStrings() {
+        ClassWriter writer = new ClassWriter(0);
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "demo/StringCaller", null, "java/lang/Object", null);
+        MethodVisitor method = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "names", "()V", null, null);
+        method.visitCode();
+        method.visitLdcInsn("a/b/A");
+        method.visitInsn(Opcodes.POP);
+        method.visitLdcInsn("a.b.A");
+        method.visitInsn(Opcodes.POP);
+        method.visitLdcInsn("data/config/settings.json");
+        method.visitInsn(Opcodes.POP);
+        method.visitLdcInsn("plainText");
+        method.visitInsn(Opcodes.POP);
+        method.visitInsn(Opcodes.RETURN);
+        method.visitMaxs(1, 0);
+        method.visitEnd();
+        writer.visitEnd();
+        return writer.toByteArray();
+    }
+
+    @Test
     void unmappedClassPassesThroughUnmodified() {
         BytecodeRemapper remapper = new BytecodeRemapper(repository(), MappingDirection.OBFUSCATED_TO_NAMED);
         byte[] original = modClassBytesWithoutObfRefs();

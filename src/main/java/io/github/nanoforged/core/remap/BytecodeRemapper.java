@@ -2,13 +2,21 @@ package io.github.nanoforged.core.remap;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.commons.ClassRemapper;
+import org.objectweb.asm.commons.MethodRemapper;
 import org.objectweb.asm.commons.Remapper;
 
 import java.util.Objects;
 
 /**
  * 基于映射仓库的字节码重映射器：在 class 级别统一改写类名、字段名、方法名和描述符。
+ *
+ * <p>覆盖范围：常量池中的直接引用（字段/方法/类常量）、MethodHandle/MethodType
+ * 常量与 invokedynamic（ASM ClassRemapper 默认经 map 系列方法处理）；
+ * 以及字符串常量中精确匹配 obf 类名的内容（{@code Class.forName} 等字符串
+ * 反射路径，slash/dot 两种形态均识别并保持原形态输出）。
+ * 不覆盖：成员名的独立字符串（{@code getMethod("名")}），无法静态判定语境。
  *
  * <p>移植自 SSOptimizer mapping 模块（github.kasuminova.ssoptimizer.mapping），
  * 供运行时 {@code NanoRemapTransformer} 使用。
@@ -43,7 +51,7 @@ public final class BytecodeRemapper {
         // 孤儿 Methodref/Fieldref 项带进产物；全新 ClassWriter 只保留可达常量，
         // 避免 JDK 对变换后类的强制格式检查被孤儿项击杀）。移植自 SSOptimizer。
         ClassWriter writer = new ClassWriter(0);
-        reader.accept(new ClassRemapper(writer, remapper), 0);
+        reader.accept(new StringAwareClassRemapper(writer, remapper), 0);
 
         String inputInternalName = reader.getClassName();
         String outputInternalName = remapper.map(inputInternalName);
@@ -63,6 +71,32 @@ public final class BytecodeRemapper {
                                 String outputInternalName,
                                 byte[] bytecode,
                                 boolean modified) {
+    }
+
+    /**
+     * 在 ClassRemapper 基础上额外改写字符串常量中的 obf 类名
+     * （{@code Class.forName} / 字符串承载类名的反射路径）。
+     */
+    private final class StringAwareClassRemapper extends ClassRemapper {
+        private final RepositoryBackedRemapper stringRemapper;
+
+        StringAwareClassRemapper(ClassWriter writer, RepositoryBackedRemapper remapper) {
+            super(writer, remapper);
+            this.stringRemapper = remapper;
+        }
+
+        @Override
+        protected MethodVisitor createMethodRemapper(MethodVisitor methodVisitor) {
+            return new MethodRemapper(methodVisitor, stringRemapper) {
+                @Override
+                public void visitLdcInsn(Object value) {
+                    if (value instanceof String stringValue) {
+                        value = stringRemapper.mapClassNameString(stringValue);
+                    }
+                    super.visitLdcInsn(value);
+                }
+            };
+        }
     }
 
     private final class RepositoryBackedRemapper extends Remapper {
@@ -144,6 +178,36 @@ public final class BytecodeRemapper {
                 modified = true;
             }
             return mappedName;
+        }
+
+        /**
+         * 改写字符串常量中的类名：slash（{@code com/fs/...}）与 dot（{@code com.fs...}）
+         * 两种形态均识别，精确匹配映射表中的类条目才改写，并保持原形态输出；
+         * 未命中原样返回。成员名不在此处理（无法静态判定语境，误伤风险高）。
+         */
+        String mapClassNameString(String value) {
+            boolean dotForm = value.indexOf('/') < 0;
+            if (dotForm && value.indexOf('.') < 0) {
+                return value;
+            }
+            String internalForm = dotForm ? value.replace('.', '/') : value;
+            MappingEntry classEntry = switch (direction) {
+                case OBFUSCATED_TO_NAMED -> repository.findClassByObfuscatedName(internalForm).orElse(null);
+                case NAMED_TO_OBFUSCATED -> repository.findClassByNamedName(internalForm).orElse(null);
+            };
+            if (classEntry == null) {
+                return value;
+            }
+
+            String mappedName = switch (direction) {
+                case OBFUSCATED_TO_NAMED -> classEntry.namedName();
+                case NAMED_TO_OBFUSCATED -> classEntry.obfuscatedName();
+            };
+            if (internalForm.equals(mappedName)) {
+                return value;
+            }
+            modified = true;
+            return dotForm ? mappedName.replace('/', '.') : mappedName;
         }
 
         boolean modified() {
