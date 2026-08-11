@@ -10,6 +10,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -45,6 +46,8 @@ public final class SaveCompatMapping {
     private final MappingRepository repository;
     /** 已告警的字段级缺口（ownerNamed#serializedName），同一缺口只 WARN 一次 */
     private final Set<String> warnedFieldMisses = ConcurrentHashMap.newKeySet();
+    /** 表内含成员条目的 owner 混淆类名（惰性构建）：用于区分真实缺口与恒等类/隐式集合项的误报 */
+    private volatile Set<String> ownersWithMembers;
 
     /**
      * 使用指定映射仓库创建兼容映射。
@@ -109,28 +112,78 @@ public final class SaveCompatMapping {
     /**
      * 把存档中的序列化字段名（linux-obf）翻译为 named 运行时字段名。
      *
-     * <p>表外类（模组/JDK 类）返回 {@code null} 交默认逻辑；表内类查不到字段时
-     * 按缺口 WARN（每个唯一缺口只报一次），同样返回 {@code null}。
+     * <p>XStream 反序列化时以<b>具体类</b>调用本方法：模组子类（如
+     * {@code data.scripts.world.util.Jc_sf_MovingBaseEntity}）继承游戏基类字段时，
+     * ownerType 是表外的模组类，必须沿父类链向上找到表内的游戏类再查字段，
+     * 否则 {@code j1} 等字段翻译落空、XStream 静默丢弃后 readResolve NPE。
      *
-     * @param ownerType      XStream 给出的字段声明类（named 运行时类）
+     * <p>旧 SSOptimizer 反混淆运行时为 Java 源码合法性把含 {@code .} 的混淆字段名
+     * （如 {@code super.super}）转写为 {@code super$dot$super} 写盘；查表失败时
+     * 以 {@code $dot$}→{@code .} 回退再查一次，兼容这批历史存档。
+     *
+     * <p>缺口告警策略：仅当父类链上存在<b>含成员条目</b>的表内类时才 WARN
+     * （真实跨平台混淆缺口）；零成员条目的恒等类（api jar 未混淆类）与
+     * 隐式集合项名按恒等直通属正常行为，降级 DEBUG。{@code ssoptimizer$}
+     * 前缀是本家 coremod 注入字段，恒等直通，不告警。
+     *
+     * @param ownerType      XStream 给出的字段声明类（named 运行时具体类）
      * @param serializedName 存档 XML 中的字段名
      * @return named 字段名；无法翻译返回 {@code null}
      */
     public String toNamedFieldName(Class<?> ownerType, String serializedName) {
-        String ownerNamed = ownerType.getName().replace('.', '/');
-        Optional<MappingEntry> classEntry = repository.findClassByNamedName(ownerNamed);
-        if (classEntry.isEmpty()) {
+        if (serializedName.startsWith("ssoptimizer$")) {
             return null;
         }
-        Optional<MappingEntry> field = repository.findFieldByObfuscatedName(
-                classEntry.get().obfuscatedName(), serializedName);
-        if (field.isPresent() && field.get().namedName() != null) {
-            return field.get().namedName();
+        boolean gapCandidate = false;
+        for (Class<?> type = ownerType; type != null; type = type.getSuperclass()) {
+            String ownerNamed = type.getName().replace('.', '/');
+            Optional<MappingEntry> classEntry = repository.findClassByNamedName(ownerNamed);
+            if (classEntry.isEmpty()) {
+                continue;
+            }
+            String ownerObfuscated = classEntry.get().obfuscatedName();
+            Optional<MappingEntry> field = repository.findFieldByObfuscatedName(ownerObfuscated, serializedName);
+            if (field.isEmpty() && serializedName.contains("$dot$")) {
+                field = repository.findFieldByObfuscatedName(
+                        ownerObfuscated, serializedName.replace("$dot$", "."));
+            }
+            if (field.isPresent() && field.get().namedName() != null) {
+                return field.get().namedName();
+            }
+            gapCandidate |= ownersWithMembers().contains(ownerObfuscated);
         }
-        if (warnedFieldMisses.add(ownerNamed + '#' + serializedName)) {
-            LOGGER.warn("存档字段名无法映射（疑似跨平台混淆缺口）: {}#{}", ownerNamed, serializedName);
+        if (gapCandidate && warnedFieldMisses.add(ownerType.getName().replace('.', '/') + '#' + serializedName)) {
+            LOGGER.warn("存档字段名无法映射（疑似跨平台混淆缺口）: {}#{}",
+                    ownerType.getName().replace('.', '/'), serializedName);
+        } else {
+            LOGGER.debug("存档字段名无需映射（恒等类/隐式集合项/表外类）: {}#{}",
+                    ownerType.getName().replace('.', '/'), serializedName);
         }
         return null;
+    }
+
+    /**
+     * 表内含成员条目的 owner 混淆类名集合（惰性构建一次）。
+     *
+     * @return 含至少一条字段/方法条目的 owner 混淆类名
+     */
+    private Set<String> ownersWithMembers() {
+        Set<String> current = ownersWithMembers;
+        if (current != null) {
+            return current;
+        }
+        synchronized (this) {
+            if (ownersWithMembers == null) {
+                Set<String> built = new HashSet<>();
+                for (MappingEntry entry : repository.entries()) {
+                    if (!entry.isClass()) {
+                        built.add(entry.ownerObfuscatedName());
+                    }
+                }
+                ownersWithMembers = built;
+            }
+            return ownersWithMembers;
+        }
     }
 
     /**

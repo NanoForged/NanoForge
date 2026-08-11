@@ -29,7 +29,11 @@ class SaveCompatMapperWrapperTest {
         TinyV2MappingRepository repository = TinyV2MappingRepository.of(List.of(
                 MappingEntry.classEntry(OBF_CLASS, OBF_CLASS, NAMED_CLASS),
                 MappingEntry.fieldEntry(OBF_CLASS, NAMED_CLASS, "j1", "j1", "appearanceJSON", "Ljava/lang/String;"),
-                MappingEntry.fieldEntry(OBF_CLASS, NAMED_CLASS, "cargo", "cargo", "cargo", "Ljava/lang/String;")
+                MappingEntry.fieldEntry(OBF_CLASS, NAMED_CLASS, "cargo", "cargo", "cargo", "Ljava/lang/String;"),
+                MappingEntry.fieldEntry(OBF_CLASS, NAMED_CLASS, "super.super", "super.super", "alwaysUnlocked", "Z"),
+                // 零成员条目的恒等类（模拟 api jar 未混淆类）：字段恒等直通，不告警
+                MappingEntry.classEntry("xsw/Identity", "xsw/Identity",
+                        "io/github/nanoforged/core/save/SaveCompatIdentityFixture")
         ));
         mapping = new SaveCompatMapping(repository);
         wrapper = new SaveCompatMapperWrapper(new XStream().getMapper(), mapping);
@@ -64,6 +68,33 @@ class SaveCompatMapperWrapperTest {
     void classOutsideTableIsUntouched() {
         assertNull(mapping.toNamedFieldName(String.class, "value"));
         assertNull(mapping.toObfFieldName(String.class, "value"));
+    }
+
+    @Test
+    void inheritedObfFieldTranslatesViaSuperclassWalk() {
+        // 模组子类实例反序列化：realMember 以具体类入参，j1 声明在表内基类
+        assertEquals("appearanceJSON", mapping.toNamedFieldName(SaveCompatSubFixture.class, "j1"));
+        assertEquals("appearanceJSON", wrapper.realMember(SaveCompatSubFixture.class, "j1"));
+    }
+
+    @Test
+    void legacyDotSanitizedFieldTranslatesViaFallback() {
+        // 旧 SSOptimizer 运行时把 super.super 转写为 super$dot$super 写盘
+        assertEquals("alwaysUnlocked", mapping.toNamedFieldName(SaveCompatFixture.class, "super$dot$super"));
+        assertEquals("alwaysUnlocked", wrapper.realMember(SaveCompatFixture.class, "super$dot$super"));
+    }
+
+    @Test
+    void identityClassFieldPassesThroughQuietly() {
+        // 零成员条目的恒等类：字段原名直通，返回 null 交默认逻辑且不 WARN
+        assertNull(mapping.toNamedFieldName(SaveCompatIdentityFixture.class, "savedCells"));
+        assertEquals("savedCells", wrapper.realMember(SaveCompatIdentityFixture.class, "savedCells"));
+    }
+
+    @Test
+    void coremodInjectedFieldPassesThroughQuietly() {
+        // ssoptimizer$ 前缀是本家 coremod 注入字段，恒等直通
+        assertNull(mapping.toNamedFieldName(SaveCompatFixture.class, "ssoptimizer$eventModDirty"));
     }
 
     @Test
