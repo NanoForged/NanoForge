@@ -200,7 +200,33 @@ natives：`extractGameNatives` 从游戏 vendor 的
 `lib/native/{linux,macos,windows}`，游戏字节码与 natives 正交。
 OS 条件分支审计结论见 `os-branch-audit.md`（分支面极小，设驱动属性即全覆盖）。
 
-### 2.6 coremod 化配套结论（R4）
+### 2.6 存档兼容：跨平台混淆名翻译（R5）
+
+linux 与 windows obf jar 是两轮独立混淆（约四成共同类字段名不同，
+如 `CampaignGameManager` 同一字段 linux 叫 `ö00000`、windows 叫 `õ00000`）。
+named jar 以 windows mapping 构建，而旧存档由 linux obf 游戏写入，
+XStream 按字段名绑定时 linux-obf 名静默丢字段（首个爆点：
+`CustomCampaignEntity` 的 `j1`→`appearanceJSON` 断裂导致 readResolve NPE）。
+
+兼容层以 SourceSector `:mapping:generateLinuxSaveCompatMapping` 合成的
+`linux-obf → named` 两列 tiny v2 表为事实来源（合成输入：linux 全量表
+`0.98a-rc8-linux-full.tiny` + windows 全量表 + linux obf jar 结构验证），
+`packSaveCompatMapping` 部署为 `mods/nanoforge/game-linux-save-compat.tiny.gz`：
+
+```
+SaveXStreamMixin（nanoforge.mixin.core.save）注入 SaveXStream.wrapMapper RETURN
+  ▼
+SaveCompatMapperWrapper（nanoforge.save，LCL 侧，最外层 MapperWrapper）
+  │  读：realMember/realClass 先让内层别名链处理（dN/CCEnt 等压缩别名与
+  │      混淆无关），恒等返回才查兼容表；字段级缺口 WARN 一次（跨平台量化依据）
+  │  写：serializedMember/serializedClass 反向译回 linux-obf 名，
+  │      新写存档与 linux obf 游戏格式一致，双向互通
+  ▼
+SaveCompatMapping（io.github.nanoforged.core.save，系统加载器侧单份表与日志）
+  默认开启，-Dnanoforge.save.compat=false 关闭，-Dnanoforge.save.compat.mapping= 覆盖路径
+```
+
+### 2.7 coremod 化配套结论（R4）
 
 - **sanitize 不移植**：SSOptimizer javaagent 时代的 Sanitizing/ReflectionSanitizing
   通道面向「named jar 含非法标识符」场景；对 SourceSector 全部 windows named jar
