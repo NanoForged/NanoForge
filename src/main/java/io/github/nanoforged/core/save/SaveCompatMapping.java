@@ -150,7 +150,9 @@ public final class SaveCompatMapping {
             if (field.isPresent() && field.get().namedName() != null) {
                 return field.get().namedName();
             }
-            gapCandidate |= ownersWithMembers().contains(ownerObfuscated);
+            // 仅 ownerType 自身的表内类决定告警资格：父类在表内不代表本名字段是游戏字段，
+            // 模组类自身声明的字段恒等直通（模组类不参与混淆），不应误报。
+            gapCandidate |= type == ownerType && ownersWithMembers().contains(ownerObfuscated);
         }
         if (gapCandidate && warnedFieldMisses.add(ownerType.getName().replace('.', '/') + '#' + serializedName)) {
             LOGGER.warn("存档字段名无法映射（疑似跨平台混淆缺口）: {}#{}",

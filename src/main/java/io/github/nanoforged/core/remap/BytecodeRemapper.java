@@ -3,6 +3,7 @@ package io.github.nanoforged.core.remap;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.MethodRemapper;
 import org.objectweb.asm.commons.Remapper;
@@ -94,6 +95,23 @@ public final class BytecodeRemapper {
                         value = stringRemapper.mapClassNameString(stringValue);
                     }
                     super.visitLdcInsn(value);
+                }
+
+                @Override
+                public void visitMethodInsn(int opcode, String owner, String name,
+                                            String descriptor, boolean isInterface) {
+                    super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+                    // RFB 对被改写的类赋予 jar!/entry 形态 CodeSource；把 getLocation()
+                    // 调用点包一层 toJarFileUrl，修复「CodeSource 当 classpath 根」模式。
+                    if (opcode == Opcodes.INVOKEVIRTUAL
+                            && "java/security/CodeSource".equals(owner)
+                            && "getLocation".equals(name)
+                            && "()Ljava/net/URL;".equals(descriptor)) {
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                "io/github/nanoforged/core/remap/CodeSourceSupport",
+                                "toJarFileUrl", "(Ljava/net/URL;)Ljava/net/URL;", false);
+                        stringRemapper.markModified();
+                    }
                 }
             };
         }
@@ -212,6 +230,11 @@ public final class BytecodeRemapper {
 
         boolean modified() {
             return modified;
+        }
+
+        /** 标记该类已发生改写（供非映射类改写路径使用，如 CodeSource 修复包裹）。 */
+        void markModified() {
+            modified = true;
         }
     }
 }

@@ -177,6 +177,26 @@ NanoRemapTransformer（core/asm/tweakers）逐类 remap；失败 WARN 透传，�
 已知边界：模组随 jar 携带 .java 源码由游戏内 Janino 运行时编译的路径不经过
 字节码 transformer，此类模组须按 named 命名空间编写源码。
 
+**CodeSource 形态适配**：RFB LaunchClassLoader 对被 transformer 改写的类赋予
+`jar:file:...jar!/entry` 形态 CodeSource（stock LaunchWrapper 同款行为），
+而模组惯用的「取本类 CodeSource 当 classpath 根自建 URLClassLoader」模式
+（实证：Ship Mastery `ModPlugin$ReflectionEnabledClassLoader`）只接受 jar
+文件 URL，直接喂 entry URL 会 findClass 全线 ClassNotFoundException。
+BytecodeRemapper 在 remap 通道里把所有 `CodeSource.getLocation()` 调用点
+包一层 `CodeSourceSupport.toJarFileUrl()`（仅还原 jar!/entry 形态，其余放行），
+使该模式取到与原版一致的 jar 根 URL。
+
+**自建类加载器的 named 字节码供给**：仅还原 jar 根 URL 还不够——模组自建
+子类加载器 findClass 直读 jar 原始字节码，完全绕过 LCL transformer 链，
+类常量池里的 obf 引用（实证：`com.fs.starfarer.campaign.ui.UITable`，
+named 侧映射为根包 `UITable`）在 named 运行时不存在，依旧
+ClassNotFoundException。`ModJarMounter` 挂载时把模组 jar 登记进
+`ModJarRemapCache`；`CodeSourceSupport.toJarFileUrl()` 还原 jar 根后
+对已登记模组 jar 重定向到整 jar remap 副本（.class 条目全量 obf→named
+改写、资源原样拷贝，按源 jar 路径+mtime+尺寸缓存在
+`mods/nanoforge/remapped-mods/`，首次请求懒惰生成），使子类加载器读到的
+字节码与 LCL transformer 链产物一致。
+
 运行时适配（linux 实机冒烟验证过的三个点）：
 
 - **lwjgl 密封**：lwjgl.jar manifest 带 `Sealed: true`，与 RFB 包密封校验冲突

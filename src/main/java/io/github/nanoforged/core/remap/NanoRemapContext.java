@@ -70,6 +70,11 @@ public final class NanoRemapContext {
         return activeContext;
     }
 
+    /** 清除运行时生效上下文；仅测试用于隔离静态状态，生产代码不得调用。 */
+    static void clearActiveContext() {
+        activeContext = null;
+    }
+
     /**
      * 从文件系统加载全量 mapping 表并置为运行时生效上下文。
      *
@@ -132,6 +137,16 @@ public final class NanoRemapContext {
             LOGGER.warn("运行时 remap 失败，按原样放行: " + className, throwable);
             return null;
         }
+    }
+
+    /**
+     * 归档级 remap 入口：返回完整改写结果（未命中时 {@code bytecode} 为原样字节码），
+     * 供 {@link ModJarRemapCache} 整 jar 改写使用；与 {@link #remap} 的「未改写返回
+     * {@code null}」语义不同，归档写入侧需要确定性的输出字节。
+     */
+    public BytecodeRemapper.RemappedClass remapArchiveEntry(byte[] classfileBuffer) {
+        Objects.requireNonNull(classfileBuffer, "classfileBuffer");
+        return bytecodeRemapper.remapClass(classfileBuffer);
     }
 
     /**

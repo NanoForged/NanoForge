@@ -142,9 +142,62 @@ class BytecodeRemapperTest {
         assertArrayEquals(original, result.bytecode());
     }
 
+    @Test
+    void codeSourceGetLocationCallIsWrappedWithJarFileUrlFix() {
+        BytecodeRemapper remapper = new BytecodeRemapper(repository(), MappingDirection.OBFUSCATED_TO_NAMED);
+
+        BytecodeRemapper.RemappedClass result = remapper.remapClass(modClassBytesWithCodeSourceLookup());
+
+        // 无映射命中也必须改写：getLocation() 调用点插入了 toJarFileUrl 包裹
+        assertTrue(result.modified());
+
+        // 逐指令验证：getLocation() 之后紧跟 CodeSourceSupport.toJarFileUrl 静态调用
+        List<String> methodCalls = new java.util.ArrayList<>();
+        new ClassReader(result.bytecode()).accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                             String signature, String[] exceptions) {
+                return new MethodVisitor(Opcodes.ASM9) {
+                    @Override
+                    public void visitMethodInsn(int opcode, String owner, String methodName,
+                                                String methodDescriptor, boolean isInterface) {
+                        methodCalls.add(owner + '#' + methodName + methodDescriptor);
+                    }
+                };
+            }
+        }, 0);
+        assertEquals(List.of(
+                "java/lang/Object#getClass()Ljava/lang/Class;",
+                "java/lang/Class#getProtectionDomain()Ljava/security/ProtectionDomain;",
+                "java/security/ProtectionDomain#getCodeSource()Ljava/security/CodeSource;",
+                "java/security/CodeSource#getLocation()Ljava/net/URL;",
+                "io/github/nanoforged/core/remap/CodeSourceSupport#toJarFileUrl(Ljava/net/URL;)Ljava/net/URL;"), methodCalls);
+    }
+
     private static byte[] modClassBytesWithoutObfRefs() {
         ClassWriter writer = new ClassWriter(0);
         writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "demo/Plain", null, "java/lang/Object", null);
+        writer.visitEnd();
+        return writer.toByteArray();
+    }
+
+    /** 合成一个模组类：模拟「取本类 CodeSource 当 classpath 根」惯用模式 */
+    private static byte[] modClassBytesWithCodeSourceLookup() {
+        ClassWriter writer = new ClassWriter(0);
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "demo/CodeSourceCaller", null, "java/lang/Object", null);
+        MethodVisitor method = writer.visitMethod(Opcodes.ACC_PUBLIC, "ownJar", "()Ljava/net/URL;", null, null);
+        method.visitCode();
+        method.visitVarInsn(Opcodes.ALOAD, 0);
+        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Object", "getClass", "()Ljava/lang/Class;", false);
+        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Class", "getProtectionDomain",
+                "()Ljava/security/ProtectionDomain;", false);
+        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/security/ProtectionDomain", "getCodeSource",
+                "()Ljava/security/CodeSource;", false);
+        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/security/CodeSource", "getLocation",
+                "()Ljava/net/URL;", false);
+        method.visitInsn(Opcodes.ARETURN);
+        method.visitMaxs(1, 1);
+        method.visitEnd();
         writer.visitEnd();
         return writer.toByteArray();
     }

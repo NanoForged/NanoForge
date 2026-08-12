@@ -20,6 +20,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * 完全绕过 LaunchWrapper transformer 链；游戏类已被 remap 为 named 后，
  * 按 obf 编译的模组会因引用 obf 类名而 NoClassDefFoundError。
  * 挂载后父委托优先命中 LCL，模组类的 obf 引用在加载期被改写为 named。
+ * 同时把 jar 路径登记进 {@link ModJarRemapCache}：模组「取 CodeSource 自建
+ * URLClassLoader」直读 jar 字节码的路径（绕过 LCL transformer）由
+ * {@link CodeSourceSupport} 重定向到 obf→named remap 副本。
  *
  * <p>由 {@code ScriptStoreMixin} 在 {@code ScriptStore.createSourceClassLoader}
  * （模组脚本类加载器装配的咽喉点，loadScripts 与 ScriptLoadingTask 两条路径共用）
@@ -56,6 +59,8 @@ public final class ModJarMounter {
                 throw new IllegalStateException("模组 jar 路径无法转换为 URL: " + jarPath, e);
             }
             Launch.classLoader.addURL(jarUrl);
+            // 登记给 CodeSource 重定向：模组自建类加载器读 jar 原字节码时改喂 remap 副本
+            ModJarRemapCache.registerMountedJar(jarPath);
             mounted++;
         }
         if (mounted > 0) {
