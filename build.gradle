@@ -219,14 +219,14 @@ tasks.register('packFullMapping') {
     }
 }
 
-// 存档兼容表打包：Paragon 裁剪的 linux-obf → named 最小序列化兼容表 → gzip，供 deployToGame 部署。
-// 由 Paragon tools/savecompat/build_save_compat.py 产出；源缺失显式报错。
+// 存档兼容表打包：SourceSector 裁剪的 linux-obf → named 最小序列化兼容表 → gzip，供 deployToGame 部署。
+// 由 SourceSector tools/savecompat/build_save_compat.py 产出；源缺失显式报错。
 tasks.register('packSaveCompatMapping') {
     group = 'nanoforge'
-    description = 'gzip Paragon 存档兼容表到 build/nanoforge/game-linux-save-compat.tiny.gz'
+    description = 'gzip SourceSector 存档兼容表到 build/nanoforge/game-linux-save-compat.tiny.gz'
 
-    def compatTiny = providers.gradleProperty('paragon.saveCompatTiny')
-            .getOrElse('../Paragon/mappings/save-compat/0.98a-rc8-linux-save-compat.tiny')
+    def compatTiny = providers.gradleProperty('sourcesector.saveCompatTiny')
+            .getOrElse('../SourceSector/mapping/versions/0.98a-rc8-linux-save-compat.tiny')
     def output = layout.buildDirectory.file('nanoforge/game-linux-save-compat.tiny.gz')
 
     outputs.file(output)
@@ -235,7 +235,7 @@ tasks.register('packSaveCompatMapping') {
     doLast {
         def src = file(compatTiny)
         if (!src.isFile()) {
-            throw new GradleException("Paragon 存档兼容表不存在: $src（可用 -Pparagon.saveCompatTiny= 覆盖路径）")
+            throw new GradleException("SourceSector 存档兼容表不存在: $src（可用 -Psourcesector.saveCompatTiny= 覆盖路径）")
         }
         def target = output.get().asFile
         target.parentFile.mkdirs()
