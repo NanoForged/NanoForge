@@ -34,7 +34,7 @@ import java.util.zip.ZipOutputStream;
  * 不存在，触发 ClassNotFoundException。{@link CodeSourceSupport} 把 CodeSource
  * URL 还原为 jar 根后，经本类重定向到 remap 副本，使子类加载器读到 named 字节码。
  *
- * <p>副本按源 jar 路径 + mtime + 尺寸命名，缓存在
+ * <p>副本按源 jar 路径 + mtime + 尺寸 + mapping 表身份命名，缓存在
  * {@code <mods>/nanoforge/remapped-mods/}，首次请求时懒惰生成。
  */
 public final class ModJarRemapCache {
@@ -98,9 +98,16 @@ public final class ModJarRemapCache {
         try {
             Path cacheDir = PathUtils.getModsPath().resolve("nanoforge").resolve("remapped-mods");
             Files.createDirectories(cacheDir);
+            // 缓存键须含 mapping 表身份：mapping 迭代（如批量命名修正）后
+            // 旧副本的 obf→named 翻译即失效，不能再命中
+            Path mappingPath = context.mappingPath();
+            String mappingIdentity = mappingPath != null
+                    ? Files.getLastModifiedTime(mappingPath).toMillis() + "-" + Files.size(mappingPath)
+                    : "test";
             String cacheName = sourceJar.getFileName()
                     + "." + Files.getLastModifiedTime(sourceJar).toMillis()
                     + "." + Files.size(sourceJar)
+                    + "." + mappingIdentity
                     + ".remapped.jar";
             Path target = cacheDir.resolve(cacheName);
             if (Files.isRegularFile(target)) {

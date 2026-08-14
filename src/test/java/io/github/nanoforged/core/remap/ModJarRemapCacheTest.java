@@ -35,7 +35,7 @@ class ModJarRemapCacheTest {
     private static final String TABLE = """
             tiny\t2\t0\tobf\tintermediary\tnamed
             c\ta/b/A\ta/b/I_A\tcom/example/Engine
-            \tm\tÒ00001\to00001\tgetSpeed\t()F
+            \tm\t()F\tÒ00001\to00001\tgetSpeed
             """;
 
     @TempDir

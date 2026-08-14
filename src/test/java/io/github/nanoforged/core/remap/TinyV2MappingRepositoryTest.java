@@ -23,12 +23,12 @@ class TinyV2MappingRepositoryTest {
     private static final String TABLE = """
             tiny\t2\t0\tobf\tintermediary\tnamed
             c\ta/b/A\ta/b/I_A\tcom/example/Engine
-            \tm\tÒ00000\to00001\tgetSpeed\t()F
+            \tm\t()F\tÒ00000\to00001\tgetSpeed
             \t\tc\t速度 getter
-            \tf\tÒ00001\to00002\tthrottle\tF
+            \tf\tF\tÒ00001\to00002\tthrottle
             c\ta/b/B\ta/b/I_B\tcom/example/Ship
             \tc\t舰船
-            \tm\tÒ00002\to00003\tgetEngine\t()La/b/A;
+            \tm\t()La/b/A;\tÒ00002\to00003\tgetEngine
             """;
 
     @TempDir
@@ -116,7 +116,7 @@ class TinyV2MappingRepositoryTest {
         String table = """
                 tiny\t2\t0\tobf\tintermediary\tnamed
                 c\ta/b/B\ta/b/C_cc0a40ce
-                \tm\tÒ00002\tm_420ceea0_6\t()F
+                \tm\t()F\tÒ00002\tm_420ceea0_6
                 c\ta/b/A\ta/b/I_A\tcom/example/Engine
                 """;
         TinyV2MappingRepository repo = parse(table);
@@ -136,7 +136,7 @@ class TinyV2MappingRepositoryTest {
         String table = """
                 tiny\t2\t0\tobf\tnamed
                 c\ta/b/A\tcom/example/Engine
-                \tf\tÒ00001\tthrottle\tF
+                \tf\tF\tÒ00001\tthrottle
                 """;
         TinyV2MappingRepository repo = parse(table);
 

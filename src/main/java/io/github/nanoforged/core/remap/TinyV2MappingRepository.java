@@ -19,21 +19,19 @@ import java.util.zip.GZIPInputStream;
 /**
  * Tiny v2 映射仓库实现：从输入流解析并建立 obf↔named 双向查询索引。
  *
- * <p>输入格式以 SourceSector 产出的三命名空间全量表为准：
+ * <p>输入为标准 Tiny v2（mapping-io 产出，Paragon 管线），成员行描述符
+ * 紧跟类型列、为源（obf）命名空间：
  * <pre>
- * tiny    2    0    obf    intermediary    named
- * c    &lt;obf&gt;    &lt;intermediary&gt;    &lt;named&gt;
- *     m    &lt;obf&gt;    &lt;intermediary&gt;    &lt;named&gt;    &lt;desc&gt;
- *     f    &lt;obf&gt;    &lt;intermediary&gt;    &lt;named&gt;    &lt;desc&gt;
+ * tiny    2    0    obf    named
+ * c    &lt;obf&gt;    &lt;named&gt;
+ *     m    &lt;desc&gt;    &lt;obf&gt;    &lt;named&gt;
+ *     f    &lt;desc&gt;    &lt;obf&gt;    &lt;named&gt;
  * </pre>
- * 命名空间列按表头声明的顺序解析（obf/named 必填，intermediary 可选），
- * 成员行的描述符固定在最后一列。资源路径以 {@code .gz} 结尾按 gzip 解析。
+ * 命名空间列按表头声明的顺序解析（obf/named 必填，intermediary 可选）。
+ * 资源路径以 {@code .gz} 结尾按 gzip 解析。
  *
- * <p>SourceSector 全量表约定：未获语义化命名的条目**省略 named 列**
- * （类行 3 列、成员行 4 列 + 描述符），此时 named 回退为 intermediary 名——
- * 与 named jar 中未命名类/成员以 intermediary 名引用的现状一致。
- *
- * <p>移植自 SSOptimizer mapping 模块并适配三命名空间表头驱动解析。
+ * <p>表头含 intermediary 且条目省略 named 列时，named 回退为 intermediary
+ * 名——与 named jar 中未命名类/成员以 intermediary 名引用的现状一致。
  */
 public final class TinyV2MappingRepository implements MappingRepository {
     private static final char INTERNAL_NAME_START = 'L';
@@ -152,6 +150,7 @@ public final class TinyV2MappingRepository implements MappingRepository {
         List<MappingEntry> entries = new ArrayList<>();
         int currentClassIndex = -1;
         int currentMemberIndex = -1;
+        boolean escapedNames = false;
 
         String line;
         while ((line = reader.readLine()) != null) {
@@ -165,6 +164,14 @@ public final class TinyV2MappingRepository implements MappingRepository {
             }
             String content = line.substring(indent).stripTrailing();
 
+            // 头部属性行（indent 1 且尚未出现任何类条目）：tiny v2 仅定义 escaped-names
+            if (indent == 1 && currentClassIndex < 0) {
+                if ("escaped-names".equals(content)) {
+                    escapedNames = true;
+                    continue;
+                }
+                throw new MappingLookupException("Tiny v2 不支持的头部属性: " + line);
+            }
             if (indent == 0) {
                 String[] tokens = content.split("\\s+");
                 if (!"c".equals(tokens[0])) {
@@ -172,6 +179,9 @@ public final class TinyV2MappingRepository implements MappingRepository {
                 }
                 String[] names = parseNames(java.util.Arrays.copyOfRange(tokens, 1, tokens.length),
                         columns, line);
+                if (escapedNames) {
+                    unescapeAll(names);
+                }
                 entries.add(MappingEntry.classEntry(names[0], names[1], names[2]));
                 currentClassIndex = entries.size() - 1;
                 currentMemberIndex = -1;
@@ -200,10 +210,17 @@ public final class TinyV2MappingRepository implements MappingRepository {
             }
 
             String[] tokens = content.split("\\s+");
-            // 成员行：类型 + 各命名空间名 + 描述符（固定最后一列）
-            String descriptor = tokens[tokens.length - 1];
-            String[] names = parseNames(java.util.Arrays.copyOfRange(tokens, 1, tokens.length - 1),
+            // 成员行（标准 tiny v2）：类型 + 描述符（源命名空间）+ 各命名空间名
+            if (tokens.length < 2) {
+                throw new MappingLookupException("Tiny v2 成员映射缺少描述符列: " + line);
+            }
+            String descriptor = tokens[1];
+            String[] names = parseNames(java.util.Arrays.copyOfRange(tokens, 2, tokens.length),
                     columns, line);
+            if (escapedNames) {
+                descriptor = unescape(descriptor);
+                unescapeAll(names);
+            }
 
             MappingEntry currentClass = entries.get(currentClassIndex);
             if ("f".equals(tokens[0])) {
@@ -253,8 +270,41 @@ public final class TinyV2MappingRepository implements MappingRepository {
         throw new MappingLookupException("Tiny v2 命名空间列数不正确: " + line);
     }
 
-    private static NamespaceColumns resolveNamespaces(String[] headerTokens, String resourcePath) {
-        int obfuscated = -1;
+    private static void unescapeAll(String[] tokens) {
+        for (int i = 0; i < tokens.length; i++) {
+            tokens[i] = unescape(tokens[i]);
+        }
+    }
+
+    /** mapping-io escaped-names 转义还原：\\、\t、\n、\r。null 直通（无 intermediary 列的表）。 */
+    private static String unescape(String value) {
+        if (value == null) {
+            return null;
+        }
+        int slash = value.indexOf('\\');
+        if (slash < 0) {
+            return value;
+        }
+        StringBuilder builder = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '\\' && i + 1 < value.length()) {
+                char next = value.charAt(++i);
+                switch (next) {
+                    case 't' -> builder.append('\t');
+                    case 'n' -> builder.append('\n');
+                    case 'r' -> builder.append('\r');
+                    case '\\' -> builder.append('\\');
+                    default -> throw new MappingLookupException("Tiny v2 非法转义序列: \\" + next);
+                }
+            } else {
+                builder.append(c);
+            }
+        }
+        return builder.toString();
+    }
+
+    private static NamespaceColumns resolveNamespaces(String[] headerTokens, String resourcePath) {        int obfuscated = -1;
         int intermediary = -1;
         int named = -1;
         for (int i = 3; i < headerTokens.length; i++) {

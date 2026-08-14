@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 
 /**
- * 运行时重映射上下文：以 SourceSector 全量 Tiny v2 表为事实来源，
+ * 运行时重映射上下文：以 Paragon 全量 Tiny v2 表（windows obf → named）为事实来源，
  * 把按 obf 名编译的 mod 字节码翻译进 named 命名空间，
  * 供 {@code NanoRemapTransformer} 在类加载早期使用。
  *
@@ -32,14 +32,29 @@ public final class NanoRemapContext {
 
     private final BytecodeRemapper bytecodeRemapper;
     private final TinyV2MappingRepository repository;
+    /** mapping 表来源路径；仅 {@link #loadDefault} 装配的上下文有值，测试构造为 null */
+    private final Path mappingPath;
 
     /**
      * 使用指定映射仓库创建上下文。
      */
     public NanoRemapContext(TinyV2MappingRepository repository) {
+        this(repository, null);
+    }
+
+    private NanoRemapContext(TinyV2MappingRepository repository, Path mappingPath) {
         Objects.requireNonNull(repository, "repository");
         this.bytecodeRemapper = new BytecodeRemapper(repository, MappingDirection.OBFUSCATED_TO_NAMED);
         this.repository = repository;
+        this.mappingPath = mappingPath;
+    }
+
+    /**
+     * 当前上下文加载的 mapping 表路径；测试构造的上下文为 null。
+     * 供缓存键等需要 mapping 身份的场景使用。
+     */
+    public Path mappingPath() {
+        return mappingPath;
     }
 
     /**
@@ -99,7 +114,7 @@ public final class NanoRemapContext {
         TinyV2MappingRepository loaded = TinyV2MappingRepository.loadFromFile(mappingPath);
         LOGGER.info("全量 remap mapping 表加载完成: {} ({} 条目, {} ms)",
                 mappingPath, loaded.entries().size(), (System.nanoTime() - loadStartNanos) / 1_000_000);
-        activeContext = new NanoRemapContext(loaded);
+        activeContext = new NanoRemapContext(loaded, mappingPath);
         return activeContext;
     }
 

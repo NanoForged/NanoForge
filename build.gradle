@@ -190,14 +190,14 @@ tasks.register('extractGameNatives') {
     }
 }
 
-// R3 remap mapping 表打包：SourceSector 全量 tiny → gzip，供 deployToGame 部署。
+// R3 remap mapping 表打包：Paragon 全量 tiny（windows obf → named）→ gzip，供 deployToGame 部署。
 // 独立任务（不挂进 build，CI/他机无此本地资产）；源缺失显式报错。
 tasks.register('packFullMapping') {
     group = 'nanoforge'
-    description = 'gzip SourceSector 全量 mapping 表到 build/nanoforge/game-full.tiny.gz'
+    description = 'gzip Paragon 全量 mapping 表到 build/nanoforge/game-full.tiny.gz'
 
-    def fullTiny = providers.gradleProperty('sourcesector.fullTiny')
-            .getOrElse('../SourceSector/mapping/build/generated/mappings/windows/ssoptimizer-windows-full.tiny')
+    def fullTiny = providers.gradleProperty('paragon.fullTiny')
+            .getOrElse('../Paragon/build/mappings/mappings-named.tiny')
     def output = layout.buildDirectory.file('nanoforge/game-full.tiny.gz')
 
     outputs.file(output)
@@ -206,7 +206,7 @@ tasks.register('packFullMapping') {
     doLast {
         def src = file(fullTiny)
         if (!src.isFile()) {
-            throw new GradleException("SourceSector 全量 mapping 不存在: $src（可用 -Psourcesector.fullTiny= 覆盖路径）")
+            throw new GradleException("Paragon 全量 mapping 不存在: $src（可用 -Pparagon.fullTiny= 覆盖路径）")
         }
         def target = output.get().asFile
         target.parentFile.mkdirs()
@@ -219,35 +219,6 @@ tasks.register('packFullMapping') {
     }
 }
 
-// 存档兼容表打包：SourceSector 裁剪的 linux-obf → named 最小序列化兼容表 → gzip，供 deployToGame 部署。
-// 由 SourceSector tools/savecompat/build_save_compat.py 产出；源缺失显式报错。
-tasks.register('packSaveCompatMapping') {
-    group = 'nanoforge'
-    description = 'gzip SourceSector 存档兼容表到 build/nanoforge/game-linux-save-compat.tiny.gz'
-
-    def compatTiny = providers.gradleProperty('sourcesector.saveCompatTiny')
-            .getOrElse('../SourceSector/mapping/versions/0.98a-rc8-linux-save-compat.tiny')
-    def output = layout.buildDirectory.file('nanoforge/game-linux-save-compat.tiny.gz')
-
-    outputs.file(output)
-    outputs.upToDateWhen { false }
-
-    doLast {
-        def src = file(compatTiny)
-        if (!src.isFile()) {
-            throw new GradleException("SourceSector 存档兼容表不存在: $src（可用 -Psourcesector.saveCompatTiny= 覆盖路径）")
-        }
-        def target = output.get().asFile
-        target.parentFile.mkdirs()
-        src.withInputStream { raw ->
-            target.withOutputStream { fileOut ->
-                new java.util.zip.GZIPOutputStream(fileOut).withStream { gz -> gz << raw }
-            }
-        }
-        logger.lifecycle("已打包存档兼容表: $src -> $target")
-    }
-}
-
 // R3 部署：NanoForge jar + 运行时依赖 + mapping 表 → 游戏目录 mods/nanoforge/
 // 用法：./gradlew deployToGame -Pgame.dir=/mnt/store/Games/Starsector098-linux
 tasks.register('deployToGame', Copy) {
@@ -256,7 +227,7 @@ tasks.register('deployToGame', Copy) {
 
     def gameDir = providers.gradleProperty('game.dir')
 
-    dependsOn jar, packFullMapping, packSaveCompatMapping, unsealLwjgl, mixinJar
+    dependsOn jar, packFullMapping, unsealLwjgl, mixinJar
     into { gameDir.map { "$it/mods/nanoforge" }.get() }
     from jar
     from(layout.buildDirectory.dir('nanoforge'))

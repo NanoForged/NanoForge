@@ -26,7 +26,7 @@ class NanoRemapContextTest {
     private static final String TABLE = """
             tiny\t2\t0\tobf\tintermediary\tnamed
             c\ta/b/A\ta/b/I_A\tcom/example/Engine
-            \tm\tÒ00001\to00001\tgetSpeed\t()F
+            \tm\t()F\tÒ00001\to00001\tgetSpeed
             """;
 
     @TempDir
@@ -119,16 +119,16 @@ class NanoRemapContextTest {
 
     @Test
     void realSourceSectorTableParses() {
-        // 真实产物校验：packFullMapping 的 gzip 输出必须能被解析。
-        // 本机无该资产（CI 等）时跳过——格式契约由上面的合成表用例保证。
+        // 真实产物校验：packFullMapping 的 gzip 输出（Paragon mappings-named.tiny）
+        // 必须能被解析。本机无该资产（CI 等）时跳过——格式契约由上面的合成表用例保证。
         Path realTable = Path.of("build/nanoforge/game-full.tiny.gz");
         org.junit.jupiter.api.Assumptions.assumeTrue(Files.isRegularFile(realTable),
                 "无本地 mapping 资产，跳过真实表校验");
 
         TinyV2MappingRepository repo = TinyV2MappingRepository.loadFromFile(realTable);
 
-        // 全量表约 22 万条目；量级断言防止误读空表/截断表
-        assertTrue(repo.entries().size() > 100_000,
+        // 全量表约 4.8 万条目（2932 类 + 全量成员）；量级断言防止误读空表/截断表
+        assertTrue(repo.entries().size() > 40_000,
                 "全量表条目数异常: " + repo.entries().size());
         // 抽验真实类：StarfarerSettings 必然在表内（named 侧自映射或可反查）
         assertTrue(repo.findClassByNamedName("com/fs/starfarer/settings/StarfarerSettings").isPresent());

@@ -23,9 +23,9 @@ class MappingResolverImplTest {
     private static final String TABLE = """
             tiny\t2\t0\tobf\tintermediary\tnamed
             c\ta/b/A\ta/b/I_A\tcom/example/Engine
-            \tm\tÒ00001\to00001\tgetSpeed\t()F
-            \tm\tÒ00011\to00011\tgetAcceleration\t(La/b/A;)V
-            \tf\tÒ00002\to00002\tengineName\tLjava/lang/String;
+            \tm\t()F\tÒ00001\to00001\tgetSpeed
+            \tm\t(La/b/A;)V\tÒ00011\to00011\tgetAcceleration
+            \tf\tLjava/lang/String;\tÒ00002\to00002\tengineName
             """;
 
     private static MappingResolver resolver() {
