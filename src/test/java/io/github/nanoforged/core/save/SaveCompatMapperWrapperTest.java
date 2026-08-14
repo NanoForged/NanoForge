@@ -109,4 +109,11 @@ class SaveCompatMapperWrapperTest {
                 mapping.toObfClassName(SaveCompatFixture.class.getName()));
         assertEquals(OBF_CLASS.replace('/', '.'), wrapper.serializedClass(SaveCompatFixture.class));
     }
+
+    @Test
+    void nullCollectionItemSerializesAsNullNode() {
+        // XStream 写集合/Map 中的 null 元素时以 type==null 调用 serializedClass，
+        // 须透传内层链渲染为 "null" 节点而非 NPE
+        assertEquals("null", wrapper.serializedClass(null));
+    }
 }

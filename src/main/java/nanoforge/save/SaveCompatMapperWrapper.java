@@ -94,6 +94,11 @@ public final class SaveCompatMapperWrapper extends MapperWrapper {
      */
     @Override
     public String serializedClass(Class type) {
+        if (type == null) {
+            // XStream 写集合/Map 中的 null 元素时以 type==null 调用本方法，
+            // 内层链（DefaultMapper）负责将其渲染为 "null" 节点，直接透传。
+            return super.serializedClass(null);
+        }
         String aliased = super.serializedClass(type);
         if (!aliased.equals(type.getName())) {
             return aliased;
