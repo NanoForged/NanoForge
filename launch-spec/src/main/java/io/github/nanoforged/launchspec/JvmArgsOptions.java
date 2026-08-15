@@ -12,10 +12,10 @@ package io.github.nanoforged.launchspec;
  */
 public final class JvmArgsOptions {
 
-    /** 默认 -Xms 值，脚本基线 16g。 */
-    public static final String DEFAULT_HEAP_MIN = "16g";
-    /** 默认 -Xmx 值，脚本基线 16g。 */
-    public static final String DEFAULT_HEAP_MAX = "16g";
+    /** 默认 -Xms 值，脚本基线 4g。 */
+    public static final String DEFAULT_HEAP_MIN = "4g";
+    /** 默认 -Xmx 值，脚本基线 8g。 */
+    public static final String DEFAULT_HEAP_MAX = "8g";
     /** 默认 -Xss 值，脚本基线 4m。 */
     public static final String DEFAULT_STACK_SIZE = "4m";
     /** 默认 -XX:CompilerDirectivesFile 路径，脚本基线。 */
@@ -64,12 +64,12 @@ public final class JvmArgsOptions {
         return value;
     }
 
-    /** -Xms 堆初始大小（如 "16g"）。 */
+    /** -Xms 堆初始大小（如 "4g"）。 */
     public String heapMin() {
         return heapMin;
     }
 
-    /** -Xmx 堆最大大小（如 "16g"）。 */
+    /** -Xmx 堆最大大小（如 "8g"）。 */
     public String heapMax() {
         return heapMax;
     }

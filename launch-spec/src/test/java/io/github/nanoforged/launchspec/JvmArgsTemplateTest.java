@@ -28,8 +28,8 @@ class JvmArgsTemplateTest {
         assertEquals("-Dfile.encoding=UTF-8", args.get(0));
         assertEquals("-noverify", args.get(1));
         assertEquals("-XX:CompilerDirectivesFile=./compiler_directives.txt", args.get(11));
-        assertTrue(args.contains("-Xms16g"));
-        assertTrue(args.contains("-Xmx16g"));
+        assertTrue(args.contains("-Xms4g"));
+        assertTrue(args.contains("-Xmx8g"));
         assertTrue(args.contains("-Xss4m"));
         assertEquals(13, args.stream().filter(arg -> arg.startsWith("--add-opens=")).count());
         assertEquals(3, args.stream().filter(arg -> arg.startsWith("--add-exports=")).count());
@@ -65,7 +65,7 @@ class JvmArgsTemplateTest {
                 .build());
 
         assertTrue(args.contains("-Xms12g"));
-        assertFalse(args.contains("-Xms16g"));
+        assertFalse(args.contains("-Xms4g"));
         assertTrue(args.contains("-Xmx24g"));
         assertTrue(args.contains("-Xss8m"));
         assertTrue(args.contains("-Djava.library.path=./native/macos"));
@@ -79,7 +79,7 @@ class JvmArgsTemplateTest {
     void heapArgsKeepScriptRelativeOrder() {
         List<String> args = template.resolve(JvmArgsOptions.builder().heapMin("1g").build());
         int xms = args.indexOf("-Xms1g");
-        int xmx = args.indexOf("-Xmx16g");
+        int xmx = args.indexOf("-Xmx8g");
         int xss = args.indexOf("-Xss4m");
         assertTrue(xms >= 0 && xmx > xms && xss > xmx,
                 "-Xms/-Xmx/-Xss 应按脚本顺序排列，实际索引: " + xms + "/" + xmx + "/" + xss);
