@@ -21,13 +21,13 @@ class JvmArgsTemplateTest {
     void defaultsMatchScriptBaseline() {
         List<String> args = template.resolve(JvmArgsOptions.builder().build());
 
-        // 脚本基线共 46 个 JVM 参数（13 add-opens + 3 add-exports + 其余固定项）
-        assertEquals(46, args.size(), "默认参数总数应对齐脚本基线");
+        // 脚本基线共 45 个 JVM 参数（13 add-opens + 3 add-exports + 其余固定项）
+        assertEquals(45, args.size(), "默认参数总数应对齐脚本基线");
 
         // 关键固定项与顺序
         assertEquals("-Dfile.encoding=UTF-8", args.get(0));
         assertEquals("-noverify", args.get(1));
-        assertEquals("-XX:CompilerDirectivesFile=./compiler_directives.txt", args.get(11));
+        assertEquals("-XX:CompilerDirectivesFile=./compiler_directives.txt", args.get(10));
         assertTrue(args.contains("-Xms4g"));
         assertTrue(args.contains("-Xmx8g"));
         assertTrue(args.contains("-Xss4m"));

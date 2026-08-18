@@ -1,8 +1,6 @@
 -XX:+UnlockDiagnosticVMOptions
 -XX:+UnlockExperimentalVMOptions
--XX:+ShowCodeDetailsInExceptionMessages
 -XX:+ExtensiveErrorReports
--XX:+ShowMessageBoxOnError
 -XX:+PrintCommandLineFlags
 -XX:+TieredCompilation
 -XX:-UseCondCardMark

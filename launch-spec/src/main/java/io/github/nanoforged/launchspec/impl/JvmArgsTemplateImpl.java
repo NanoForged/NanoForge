@@ -23,11 +23,10 @@ public final class JvmArgsTemplateImpl implements JvmArgsTemplate {
         Objects.requireNonNull(options, "options 不能为 null");
         List<String> args = new ArrayList<>();
 
-        // 编码、字节码校验与诊断（脚本 85-91 行基线）
+        // 编码、字节码校验与诊断（脚本 85-90 行基线）
         args.add("-Dfile.encoding=UTF-8");
         args.add("-noverify");
         args.add("-XX:+UnlockDiagnosticVMOptions");
-        args.add("-XX:+ShowCodeDetailsInExceptionMessages");
         args.add("-XX:+PrintCommandLineFlags");
         args.add("-XX:+TieredCompilation");
         args.add("-XX:+DisableExplicitGC");
