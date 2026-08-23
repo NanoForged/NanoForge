@@ -10,6 +10,8 @@ import io.github.nanoforged.core.meta.CoreModMetaException;
 import io.github.nanoforged.core.patch.ClassPatch;
 import io.github.nanoforged.core.patch.PatcherManager;
 import io.github.nanoforged.core.remap.MappingResolverImpl;
+import io.github.nanoforged.core.remap.ModJarMounter;
+import io.github.nanoforged.core.remap.ModJarScanner;
 import io.github.nanoforged.core.remap.NanoRemapContext;
 import io.github.nanoforged.core.remap.TinyV2MappingRepository;
 import io.github.nanoforged.utils.PathUtils;
@@ -34,6 +36,10 @@ import java.util.Map;
  *   <li>coremod jar 加入 LaunchClassLoader</li>
  *   <li>注册 transformer exclusion 与 ASM transformer（按加载顺序）</li>
  *   <li>登记 Mixin config（统一 Early Mixin，由 Mixin 内部按 config priority 处理）</li>
+ *   <li>把启用模组 jar 提前挂载进 LaunchClassLoader——Mixin 的 select/prepare
+ *       由首个被 transform 的类一次性触发，prepare 时目标类不可见的 mixin 会被
+ *       永久丢弃；原版挂载点（{@code ScriptStore.createSourceClassLoader}）晚于
+ *       prepare，必须在任何游戏类加载前完成挂载，针对模组类的 Mixin 才可用</li>
  *   <li>实例化 pluginClass 并按依赖序回调 {@link INanoCorePlugin#onLoad}</li>
  * </ol>
  */
@@ -77,6 +83,16 @@ public class CoreModManager {
         }
 
         registerPipeline(classLoader, assembly);
+
+        // 提前挂载启用模组 jar：必须在任何游戏类被 transform（即 Mixin select/prepare
+        // 一次性触发点）之前完成，否则针对模组类的 Mixin 在 prepare 时因目标类不可见
+        // 被永久丢弃。remap 未启用时 ModJarMounter 内部跳过，保持原版模组加载语义。
+        List<String> modJarPaths = ModJarScanner.scanEnabledModJars(PathUtils.getModsPath());
+        ModJarMounter.mountIntoLaunchClassLoader(modJarPaths);
+        if (!modJarPaths.isEmpty()) {
+            LOGGER.info("已提前枚举 {} 个启用模组 jar 挂载进 LaunchClassLoader（供 Mixin prepare 可见）",
+                    modJarPaths.size());
+        }
 
         for (CoreModMeta meta : assembly.sortedMods()) {
             INanoCorePlugin plugin = instantiate(meta, classLoader);

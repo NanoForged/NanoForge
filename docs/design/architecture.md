@@ -170,10 +170,19 @@ NanoRemapTransformer（core/asm/tweakers）逐类 remap；失败 WARN 透传，�
 **适用范围边界**：remap 通道覆盖经过 LaunchClassLoader transformer 链的
 字节码——coremod 自身的 patch/ASM/Mixin 目标、coremod jar 类，以及普通 mod
 的 jar 类。普通 mod 原版由游戏自建 URLClassLoader 加载（不过 LCL 链），
-`ScriptStoreMixin`（nanoforge.mixin.core.bootstrap）在 `ScriptStore.createSourceClassLoader()`
-（模组脚本类加载器装配咽喉点，loadScripts 与 ScriptLoadingTask 两条路径共用）
-把启用模组的 jar 挂载进 LaunchClassLoader，使模组类经父委托走 LCL 加载并
+NanoForge 将其 jar 挂载进 LaunchClassLoader，使模组类经父委托走 LCL 加载并
 完成 obf→named remap（仅 remap 上下文生效时挂载，obf 运行模式保持原版语义）。
+挂载有两个入口（ModJarMounter 按路径去重）：
+`CoreModManager.apply` 在 tweaker 期用 `ModJarScanner` 镜像游戏
+ModManager/launchGame 逻辑（enabled_mods.json + 各模组 mod_info.json，
+按 sortString||name 排序后倒序展开 jars，容错解析 # 注释与尾逗号）提前挂载——
+这是 Mixin 时序的硬要求：Mixin select/prepare 由首个被 transform 的类一次性
+触发，prepare 时 @Mixin target 类不在 LCL 资源中的 mixin 会被永久移出 config
+（日志 "@Mixin target X was not found"），晚于 prepare 的挂载点对模组类
+Mixin 无效；`ScriptStoreMixin`（nanoforge.mixin.core.bootstrap）在
+`ScriptStore.createSourceClassLoader()`（模组脚本类加载器装配咽喉点，
+loadScripts 与 ScriptLoadingTask 两条路径共用）保留为兜底入口，覆盖运行期
+动态启用模组等提前枚举未覆盖的情形。
 已知边界：模组随 jar 携带 .java 源码由游戏内 Janino 运行时编译的路径不经过
 字节码 transformer，此类模组须按 named 命名空间编写源码。
 

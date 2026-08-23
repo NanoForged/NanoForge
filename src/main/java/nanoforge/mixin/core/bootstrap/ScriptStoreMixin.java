@@ -17,6 +17,10 @@ import java.util.List;
  * 使模组类经父委托走 LCL 加载，进入 obf→named remap 链（详见
  * {@link ModJarMounter}）。
  *
+ * <p>常规启动下模组 jar 已由 {@code CoreModManager.apply} 在 tweaker 期经
+ * {@code ModJarScanner} 提前挂载（Mixin prepare 时序要求），此处为兜底入口，
+ * 已挂载的路径由 {@link ModJarMounter} 去重跳过。
+ *
  * <p>注入点选择 {@code createSourceClassLoader} 而非 {@code loadScripts}：
  * 本版本游戏的实际脚本加载路径是 {@code ScriptStore$ScriptLoadingTask.run()}，
  * 它内联复制了 jar 加载逻辑、不调用 {@code loadScripts()}（遗留方法）；

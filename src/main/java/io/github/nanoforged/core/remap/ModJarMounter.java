@@ -24,9 +24,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * URLClassLoader」直读 jar 字节码的路径（绕过 LCL transformer）由
  * {@link CodeSourceSupport} 重定向到 obf→named remap 副本。
  *
- * <p>由 {@code ScriptStoreMixin} 在 {@code ScriptStore.createSourceClassLoader}
- * （模组脚本类加载器装配的咽喉点，loadScripts 与 ScriptLoadingTask 两条路径共用）
- * 调用。remap 未启用（obf 运行模式）时不挂载，保持原版模组加载语义。
+ * <p>两个调用入口（经 {@link #MOUNTED_JAR_PATHS} 去重，重复调用自动跳过）：
+ * <ol>
+ *   <li>{@code CoreModManager.apply} 在 tweaker 期用 {@link ModJarScanner}
+ *       枚举启用模组 jar 提前挂载——Mixin 的 select/prepare 由首个被 transform 的类
+ *       一次性触发，模组 jar 必须在 prepare 前进 LCL，针对模组类的 Mixin 才可用；</li>
+ *   <li>{@code ScriptStoreMixin} 在 {@code ScriptStore.createSourceClassLoader}
+ *       （模组脚本类加载器装配的咽喉点，loadScripts 与 ScriptLoadingTask 两条路径共用）
+ *       兜底挂载——覆盖游戏运行期动态启用模组等提前枚举未覆盖的情形。</li>
+ * </ol>
+ * remap 未启用（obf 运行模式）时不挂载，保持原版模组加载语义。
  */
 public final class ModJarMounter {
     private static final Logger LOGGER = LogManager.getLogger("NanoForge/Remap");
@@ -40,7 +47,12 @@ public final class ModJarMounter {
     /**
      * 把模组 jar 挂载进 LaunchClassLoader；已挂载过的路径自动跳过。
      *
-     * @param jarPaths 游戏收集的启用模组 jar 路径列表（{@code ScriptStore.jarFiles}）
+     * <p>去重键为规范化绝对路径：调用方来源不一（{@link ModJarScanner} 的绝对路径、
+     * 游戏 {@code ScriptStore.jarFiles} 的 {@code /game/./mods/...} 形态），
+     * 必须先归一再比较，否则同一 jar 会被重复 addURL。
+     *
+     * @param jarPaths 模组 jar 路径列表（{@link ModJarScanner} 结果或
+     *                 游戏收集的 {@code ScriptStore.jarFiles} 原始值）
      */
     public static void mountIntoLaunchClassLoader(List<String> jarPaths) {
         if (NanoRemapContext.activeContext() == null) {
@@ -49,18 +61,24 @@ public final class ModJarMounter {
 
         int mounted = 0;
         for (String jarPath : jarPaths) {
-            if (!MOUNTED_JAR_PATHS.add(jarPath)) {
+            String normalizedPath;
+            try {
+                normalizedPath = new File(jarPath).getCanonicalPath();
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("模组 jar 路径无法规范化: " + jarPath, e);
+            }
+            if (!MOUNTED_JAR_PATHS.add(normalizedPath)) {
                 continue;
             }
             URL jarUrl;
             try {
-                jarUrl = new File(jarPath).toURI().toURL();
+                jarUrl = new File(normalizedPath).toURI().toURL();
             } catch (MalformedURLException e) {
                 throw new IllegalStateException("模组 jar 路径无法转换为 URL: " + jarPath, e);
             }
             Launch.classLoader.addURL(jarUrl);
             // 登记给 CodeSource 重定向：模组自建类加载器读 jar 原字节码时改喂 remap 副本
-            ModJarRemapCache.registerMountedJar(jarPath);
+            ModJarRemapCache.registerMountedJar(normalizedPath);
             mounted++;
         }
         if (mounted > 0) {
