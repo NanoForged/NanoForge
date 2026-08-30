@@ -18,15 +18,21 @@ public final class NanoForgeLaunchHelper {
      * 游戏类根包前缀：com.fs.* 为 named 主包；cdd./zzz./sound. 为 mapping 未覆盖的
      * 残留混淆根包（语义化完成后自然变为无命中空项，可随 mapping 收尾移除）。
      */
-    private static final List<String> GAME_PACKAGE_PREFIXES = List.of("com.fs.", "cdd.", "zzz.", "sound.");
+    private static final List<String> GAME_PACKAGE_PREFIXES = List.of("com.fs.", "cdd.", "zzz.", "sound.",
+            // SSOptimizer hooks 类：System 域被改写类（如 lwjgl LinuxDisplay 注入 IME 钩子）
+            // 对 Launch 域 bridge 类的引用经此委托解析，否则运行期 NoClassDefFoundError
+            "github.kasuminova.ssoptimizer.");
 
     /**
      * 游戏 classpath 第三方库包前缀（launch_nanoforge_ss.sh -classpath 中游戏侧 jar）。
      * 这些包与游戏类一同参与模组交互，模组侧经系统类加载器解析时必须拿到
      * LaunchClassLoader 中的同一份，否则反射 Class 恒等比较必然失败（运行时已验证：
      * AITweaks Symbols 以 {@code org.json.JSONObject} 按引用比较方法返回值类型）。
-     * 注意 org.lwjgl/org.slf4j/org.apache.logging/LZMA 由 LaunchClassLoader 排除项
+     * 注意 org.slf4j/org.apache.logging/LZMA 由 LaunchClassLoader 排除项
      * 固定在系统侧，不得登记，否则双向委托互踢。
+     * org.lwjgl 不在排除之列：System 域已无任何 org.lwjgl 引用（崩溃弹窗走 Swing），
+     * lwjgl 由 LaunchClassLoader 加载并参与 transformer 链——SSOptimizer 的
+     * IME 注入（LinuxDisplay/LinuxKeyboard/LinuxEvent）依赖于此（MC LaunchWrapper 标准形态）。
      */
     private static final List<String> GAME_LIBRARY_PACKAGE_PREFIXES = List.of(
             "org.json.",
@@ -104,7 +110,8 @@ public final class NanoForgeLaunchHelper {
         LOGGER.info("TransformerExclusion done.");
 
         // classloader exclusions
-        classLoader.addClassLoaderExclusion("org.lwjgl");
+        // org.lwjgl 刻意不排除：System 域无 org.lwjgl 引用（见 NanoForge 崩溃弹窗实现），
+        // lwjgl 由 LaunchClassLoader 单份加载，ASM/Mixin 可改写 LinuxDisplay/LinuxEvent 等
         classLoader.addClassLoaderExclusion("org.slf4j");
         classLoader.addClassLoaderExclusion("org.apache.logging.log4j");
         classLoader.addClassLoaderExclusion("org.apache.logging.slf4j");

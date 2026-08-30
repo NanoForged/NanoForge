@@ -3,8 +3,9 @@ import net.neoforged.bus.api.BusBuilder;
 import net.neoforged.bus.api.IEventBus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.Sys;
 
+import javax.swing.JOptionPane;
+import java.awt.HeadlessException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class NanoForge {
@@ -25,8 +26,16 @@ public final class NanoForge {
         try {
             instance = new NanoForge();
         } catch (Exception e){
-            e.printStackTrace();
-            Sys.alert("NanoForge","Failed to Inject NanoForge!");
+            LOGGER.fatal("Failed to Inject NanoForge!", e);
+            // 崩溃兜底弹窗用 Swing 而非 org.lwjgl.Sys.alert：System 域不得引用 org.lwjgl，
+            // 否则 lwjgl 必须经 classLoaderExclusion 固定在系统类加载器，
+            // Launch 域 transformer 链（ASM/Mixin）便摸不到 LinuxDisplay 等类（IME 注入前提）
+            try {
+                JOptionPane.showMessageDialog(null, "Failed to Inject NanoForge!", "NanoForge",
+                        JOptionPane.ERROR_MESSAGE);
+            } catch (HeadlessException he) {
+                LOGGER.error("Headless 环境无法弹出错误窗口", he);
+            }
             System.exit(1337);
         }
     }
