@@ -11,6 +11,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -197,6 +198,113 @@ class BytecodeRemapperTest {
                 "()Ljava/net/URL;", false);
         method.visitInsn(Opcodes.ARETURN);
         method.visitMaxs(1, 1);
+        method.visitEnd();
+        writer.visitEnd();
+        return writer.toByteArray();
+    }
+
+    /**
+     * named 替换 jar 场景：类不在映射表中（查找落空），但类内残留非法成员名，
+     * 透传侧同样必须清洗并标记改写。
+     */
+    @Test
+    void unmappedClassIllegalMemberIsSanitized() {
+        BytecodeRemapper remapper = new BytecodeRemapper(repository(), MappingDirection.OBFUSCATED_TO_NAMED);
+
+        BytecodeRemapper.RemappedClass result = remapper.remapClass(obfClassWithIllegalMemberBytes());
+
+        assertTrue(result.modified(), "查找落空但成员名非法时必须标记改写");
+        Class<?> defined = new ClassLoader(null) {
+            Class<?> define(byte[] bytes) {
+                return defineClass(null, bytes, 0, bytes.length);
+            }
+        }.define(result.bytecode());
+        assertNotNull(defined);
+    }
+
+    /**
+     * 映射表 named 侧残留非法 JVM 标识符（yGuard 字典名自映射，如 String.new）时，
+     * remap 输出必须改写为合法合成名：产物类在默认（开启校验）JVM 下可直接 define，
+     * 且声明与引用改写为同一个名字。
+     */
+    @Test
+    void illegalNamedSideMemberIsSanitized() throws Exception {
+        TinyV2MappingRepository repository = TinyV2MappingRepository.of(List.of(
+                MappingEntry.classEntry("a/b/C", "a/b/I_C", "com/example/Gadget"),
+                MappingEntry.fieldEntry("a/b/C", "com/example/Gadget", "String.new", "i00000", "String.new", "I"),
+                MappingEntry.methodEntry("a/b/C", "com/example/Gadget", "new.super", "i00001", "new.super", "()V")));
+        BytecodeRemapper remapper = new BytecodeRemapper(repository, MappingDirection.OBFUSCATED_TO_NAMED);
+
+        BytecodeRemapper.RemappedClass obfClass = remapper.remapClass(obfClassWithIllegalMemberBytes());
+        BytecodeRemapper.RemappedClass caller = remapper.remapClass(obfCallerBytes());
+        assertTrue(obfClass.modified(), "自映射非法名也必须触发改写，否则原字节会被直接 define");
+        assertEquals("com/example/Gadget", obfClass.outputInternalName());
+
+        // 确定性：同一输入重跑产出同名字节
+        assertArrayEquals(obfClass.bytecode(),
+                remapper.remapClass(obfClassWithIllegalMemberBytes()).bytecode());
+
+        // 声明与引用同名：caller 的 GETSTATIC/INVOKESTATIC 与类内声明使用同一合成名
+        String expectedField = BytecodeRemapper.sanitizeIllegalMemberName("String.new", "String.new", false);
+        String expectedMethod = BytecodeRemapper.sanitizeIllegalMemberName("new.super", "new.super()V", true);
+        String[] seen = new String[2];
+        new ClassReader(caller.bytecode()).accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                             String signature, String[] exceptions) {
+                return new MethodVisitor(Opcodes.ASM9) {
+                    @Override
+                    public void visitFieldInsn(int opcode, String owner, String fieldName, String fieldDescriptor) {
+                        seen[0] = owner + '#' + fieldName;
+                    }
+
+                    @Override
+                    public void visitMethodInsn(int opcode, String owner, String methodName,
+                                                String methodDescriptor, boolean isInterface) {
+                        seen[1] = owner + '#' + methodName;
+                    }
+                };
+            }
+        }, 0);
+        assertEquals("com/example/Gadget#" + expectedField, seen[0]);
+        assertEquals("com/example/Gadget#" + expectedMethod, seen[1]);
+
+        // 默认校验的测试 JVM 直接 define：非法名残留会在此抛 ClassFormatError
+        final class DefiningLoader extends ClassLoader {
+            Class<?> define(byte[] bytes) {
+                return defineClass(null, bytes, 0, bytes.length);
+            }
+        }
+        Class<?> gadget = new DefiningLoader().define(obfClass.bytecode());
+        assertNotNull(gadget.getDeclaredField(expectedField));
+        assertNotNull(gadget.getDeclaredMethod(expectedMethod));
+    }
+
+    /** 合成含非法成员名的 obf 类（ASM 不校验名字，可直写） */
+    private static byte[] obfClassWithIllegalMemberBytes() {
+        ClassWriter writer = new ClassWriter(0);
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "a/b/C", null, "java/lang/Object", null);
+        writer.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "String.new", "I", null, null).visitEnd();
+        MethodVisitor method = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "new.super", "()V", null, null);
+        method.visitCode();
+        method.visitInsn(Opcodes.RETURN);
+        method.visitMaxs(0, 0);
+        method.visitEnd();
+        writer.visitEnd();
+        return writer.toByteArray();
+    }
+
+    /** 合成引用上述非法成员的调用方类 */
+    private static byte[] obfCallerBytes() {
+        ClassWriter writer = new ClassWriter(0);
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "demo/IllegalCaller", null, "java/lang/Object", null);
+        MethodVisitor method = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "call", "()V", null, null);
+        method.visitCode();
+        method.visitFieldInsn(Opcodes.GETSTATIC, "a/b/C", "String.new", "I");
+        method.visitInsn(Opcodes.POP);
+        method.visitMethodInsn(Opcodes.INVOKESTATIC, "a/b/C", "new.super", "()V", false);
+        method.visitInsn(Opcodes.RETURN);
+        method.visitMaxs(1, 0);
         method.visitEnd();
         writer.visitEnd();
         return writer.toByteArray();

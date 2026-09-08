@@ -9,6 +9,11 @@ import org.objectweb.asm.commons.MethodRemapper;
 import org.objectweb.asm.commons.Remapper;
 
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * 基于映射仓库的字节码重映射器：在 class 级别统一改写类名、字段名、方法名和描述符。
@@ -19,10 +24,20 @@ import java.util.Objects;
  * 反射路径，slash/dot 两种形态均识别并保持原形态输出）。
  * 不覆盖：成员名的独立字符串（{@code getMethod("名")}），无法静态判定语境。
  *
+ * <p>输出侧兜底：映射表 named 侧偶尔残留非法 JVM 标识符（如 yGuard 字典名
+ * {@code String.new} 的自映射）。这类类只有在字节码校验关闭（-noverify）时才能 define，
+ * 而 HotSpot 对经过 JVMTI ClassFileLoadHook 改写的字节会强制格式检查（IDEA 调试
+ *  attach 后即触发），因此 remap 输出时把非法成员名确定性改写为合成名
+ * （{@code 清洗名$nf<hash>}），声明与引用走同一函数保证一致。
+ *
  * <p>移植自 SSOptimizer mapping 模块（github.kasuminova.ssoptimizer.mapping），
  * 供运行时 {@code NanoRemapTransformer} 使用。
  */
 public final class BytecodeRemapper {
+    private static final Logger LOGGER = LogManager.getLogger("NanoForge/Remap");
+    /** 已报告过的非法名清洗项（按 owner#name 去重，避免逐类刷日志）。 */
+    private static final Set<String> SANITIZE_REPORTED = ConcurrentHashMap.newKeySet();
+
     private final MappingRepository repository;
     private final MappingDirection direction;
 
@@ -165,6 +180,15 @@ public final class BytecodeRemapper {
                 case NAMED_TO_OBFUSCATED -> repository.findFieldByNamedName(owner, name).orElse(null);
             };
             if (fieldEntry == null) {
+                // named 替换 jar 的场景：类已是 named 形态，映射查找整体落空，
+                // 非法成员名（String.new 等 yGuard 字典名）也要在透传侧清洗。
+                if (direction == MappingDirection.OBFUSCATED_TO_NAMED) {
+                    String sanitized = sanitizeIllegalMemberName(name, name, false);
+                    if (!name.equals(sanitized)) {
+                        modified = true;
+                    }
+                    return sanitized;
+                }
                 return name;
             }
 
@@ -172,6 +196,9 @@ public final class BytecodeRemapper {
                 case OBFUSCATED_TO_NAMED -> fieldEntry.namedName();
                 case NAMED_TO_OBFUSCATED -> fieldEntry.obfuscatedName();
             };
+            if (direction == MappingDirection.OBFUSCATED_TO_NAMED) {
+                mappedName = sanitizeIllegalMemberName(mappedName, mappedName, false);
+            }
             if (!name.equals(mappedName)) {
                 modified = true;
             }
@@ -185,6 +212,13 @@ public final class BytecodeRemapper {
                 case NAMED_TO_OBFUSCATED -> repository.findMethodByNamedName(owner, name, descriptor).orElse(null);
             };
             if (methodEntry == null) {
+                if (direction == MappingDirection.OBFUSCATED_TO_NAMED) {
+                    String sanitized = sanitizeIllegalMemberName(name, name + descriptor, true);
+                    if (!name.equals(sanitized)) {
+                        modified = true;
+                    }
+                    return sanitized;
+                }
                 return name;
             }
 
@@ -192,6 +226,9 @@ public final class BytecodeRemapper {
                 case OBFUSCATED_TO_NAMED -> methodEntry.namedName();
                 case NAMED_TO_OBFUSCATED -> methodEntry.obfuscatedName();
             };
+            if (direction == MappingDirection.OBFUSCATED_TO_NAMED) {
+                mappedName = sanitizeIllegalMemberName(mappedName, mappedName + descriptor, true);
+            }
             if (!name.equals(mappedName)) {
                 modified = true;
             }
@@ -236,5 +273,48 @@ public final class BytecodeRemapper {
         void markModified() {
             modified = true;
         }
+    }
+
+    /**
+     * 映射表 named 侧的非法 JVM 成员名清洗：字段名不得含 {@code . ; [ /}，方法名额外不得含
+     * {@code < >}（{@code <init>}/{@code <clinit>} 除外）。合法名原样返回；非法名确定性
+     * 改写为 {@code 清洗名$nf<hash>}（hash 取自完整 lookup key，保证同 key 同结果，
+     * 声明与引用一致）。
+     */
+    static String sanitizeIllegalMemberName(String mappedName, String lookupKey, boolean method) {
+        if (mappedName == null || mappedName.isEmpty()) {
+            return syntheticMemberName("x", lookupKey);
+        }
+        if (method && (mappedName.equals("<init>") || mappedName.equals("<clinit>"))) {
+            return mappedName;
+        }
+        boolean illegal = false;
+        for (int i = 0; i < mappedName.length(); i++) {
+            char ch = mappedName.charAt(i);
+            if (ch == '.' || ch == ';' || ch == '[' || ch == '/'
+                    || (method && (ch == '<' || ch == '>'))) {
+                illegal = true;
+                break;
+            }
+        }
+        if (!illegal) {
+            return mappedName;
+        }
+        StringBuilder base = new StringBuilder(mappedName.length());
+        for (int i = 0; i < mappedName.length(); i++) {
+            char ch = mappedName.charAt(i);
+            boolean bad = ch == '.' || ch == ';' || ch == '[' || ch == '/'
+                    || (method && (ch == '<' || ch == '>'));
+            base.append(bad ? '_' : ch);
+        }
+        String sanitized = syntheticMemberName(base.toString(), lookupKey);
+        if (SANITIZE_REPORTED.add(lookupKey)) {
+            LOGGER.warn("映射表 named 侧为非法 JVM 标识符，remap 输出已改写为合成名: {} -> {}", lookupKey, sanitized);
+        }
+        return sanitized;
+    }
+
+    private static String syntheticMemberName(String base, String lookupKey) {
+        return base + "$nf" + Integer.toHexString(lookupKey.hashCode());
     }
 }
