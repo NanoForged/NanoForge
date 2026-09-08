@@ -117,12 +117,29 @@ final class RemapClassHierarchyImpl implements RemapClassHierarchy {
             bytes = locator.locate(toInputName(outputName));
         }
         if (bytes.isEmpty()) {
+            // JDK 平台类兜底：java.* 不在游戏/模组 jar 内，但帧合流的公共父类走查
+            // 会沿其继承链上行（如 URLClassLoader → SecureClassLoader → ClassLoader），
+            // 缺失会把本应精确的合流类型降级成 java/lang/Object，运行期 VerifyError。
+            // JDK 类名不参与映射，两命名空间同形，直接用输出名查。
+            bytes = locateJdkClass(outputName);
+        }
+        if (bytes.isEmpty()) {
             return Node.UNREACHABLE;
         }
         ClassReader reader = new ClassReader(bytes.get());
         Optional<String> superName = Optional.ofNullable(reader.getSuperName()).map(this::toOutputName);
         List<String> interfaces = Arrays.stream(reader.getInterfaces()).map(this::toOutputName).toList();
         return new Node(superName, interfaces);
+    }
+
+    /** JDK 平台类字节读取（jrt 资源，不触发类定义）；未命中返回 empty。 */
+    private static Optional<byte[]> locateJdkClass(String internalName) {
+        try (InputStream in = ClassLoader.getPlatformClassLoader()
+                .getResourceAsStream(internalName + ".class")) {
+            return in == null ? Optional.empty() : Optional.of(in.readAllBytes());
+        } catch (IOException e) {
+            return Optional.empty();
+        }
     }
 
     /** 输出命名空间名换算为输入命名空间名；未命中映射时原样返回（两命名空间名集不相交，恒等安全）。 */

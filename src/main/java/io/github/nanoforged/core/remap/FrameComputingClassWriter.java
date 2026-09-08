@@ -16,8 +16,10 @@ import java.util.Set;
  *
  * <p>共同父类解析不定义类（默认实现会 {@code Class.forName}），改为沿
  * {@link RemapClassHierarchy} 的父类链走查；两端链路的第一个交集即最近公共父类。
- * 层级不可达时落到 {@code java/lang/Object}——引用类型合流的恒合法上界，
- * 仅损失帧精度，不产生校验错误（tiny-remapper 等工具同款语义）。
+ * 层级覆盖必须包含 JDK 平台类（实现侧已兜底）：合流类型若被降级成
+ * {@code java/lang/Object}，流入带精确类型形参的调用点会炸 VerifyError
+ * （实机：URLClassLoader 与自定义加载器合流后作为 ClassLoader 实参）。
+ * 仅在层级彻底不可达时才落到 {@code java/lang/Object}。
  */
 final class FrameComputingClassWriter extends ClassWriter {
 
