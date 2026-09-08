@@ -58,6 +58,9 @@ dependencies {
     testImplementation platform('org.junit:junit-bom:5.13.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // remap 产物的帧表数据流校验（CheckClassAdapter.verify）
+    testImplementation 'org.ow2.asm:asm-util:9.8'
+    testImplementation 'org.ow2.asm:asm-analysis:9.8'
 
 
     //slf4j is back!

@@ -8,9 +8,15 @@ import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.MethodRemapper;
 import org.objectweb.asm.commons.Remapper;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -40,16 +46,31 @@ public final class BytecodeRemapper {
 
     private final MappingRepository repository;
     private final MappingDirection direction;
+    private final RemapClassHierarchy hierarchy;
+
+    /**
+     * 创建字节码重映射器（无层级来源，帧合流一律落到 {@code java/lang/Object}，
+     * 供无层级可用的测试/合成场景）。
+     *
+     * @param repository 映射仓库
+     * @param direction  重映射方向
+     */
+    public BytecodeRemapper(MappingRepository repository, MappingDirection direction) {
+        this(repository, direction, RemapClassHierarchy.empty());
+    }
 
     /**
      * 创建字节码重映射器。
      *
      * @param repository 映射仓库
      * @param direction  重映射方向
+     * @param hierarchy  帧重算的类层级来源（字节读取，不触发类定义）
      */
-    public BytecodeRemapper(MappingRepository repository, MappingDirection direction) {
+    public BytecodeRemapper(MappingRepository repository, MappingDirection direction,
+                            RemapClassHierarchy hierarchy) {
         this.repository = Objects.requireNonNull(repository, "repository");
         this.direction = Objects.requireNonNull(direction, "direction");
+        this.hierarchy = Objects.requireNonNull(hierarchy, "hierarchy");
     }
 
     /**
@@ -66,8 +87,11 @@ public final class BytecodeRemapper {
         // 不复用原常量池（new ClassWriter(reader, 0) 会逐字拷贝原 CP，把混淆器留下的
         // 孤儿 Methodref/Fieldref 项带进产物；全新 ClassWriter 只保留可达常量，
         // 避免 JDK 对变换后类的强制格式检查被孤儿项击杀）。移植自 SSOptimizer。
-        ClassWriter writer = new ClassWriter(0);
-        reader.accept(new StringAwareClassRemapper(writer, remapper), 0);
+        // 帧表由 FrameComputingClassWriter 全量重算（COMPUTE_FRAMES）：改写类名后
+        // 透传原帧的重编码产出过非法偏移（IDEA debug 强制校验下 ClassFormatError），
+        // 故读侧 SKIP_FRAMES，写侧以帧内容自身为准重建。
+        ClassWriter writer = new FrameComputingClassWriter(hierarchy);
+        reader.accept(new StringAwareClassRemapper(writer, remapper), ClassReader.SKIP_FRAMES);
 
         String inputInternalName = reader.getClassName();
         String outputInternalName = remapper.map(inputInternalName);
@@ -175,10 +199,7 @@ public final class BytecodeRemapper {
 
         @Override
         public String mapFieldName(String owner, String name, String descriptor) {
-            MappingEntry fieldEntry = switch (direction) {
-                case OBFUSCATED_TO_NAMED -> repository.findFieldByObfuscatedName(owner, name).orElse(null);
-                case NAMED_TO_OBFUSCATED -> repository.findFieldByNamedName(owner, name).orElse(null);
-            };
+            MappingEntry fieldEntry = findFieldEntry(owner, name).orElse(null);
             if (fieldEntry == null) {
                 // named 替换 jar 的场景：类已是 named 形态，映射查找整体落空，
                 // 非法成员名（String.new 等 yGuard 字典名）也要在透传侧清洗。
@@ -207,10 +228,7 @@ public final class BytecodeRemapper {
 
         @Override
         public String mapMethodName(String owner, String name, String descriptor) {
-            MappingEntry methodEntry = switch (direction) {
-                case OBFUSCATED_TO_NAMED -> repository.findMethodByObfuscatedName(owner, name, descriptor).orElse(null);
-                case NAMED_TO_OBFUSCATED -> repository.findMethodByNamedName(owner, name, descriptor).orElse(null);
-            };
+            MappingEntry methodEntry = findMethodEntry(owner, name, descriptor).orElse(null);
             if (methodEntry == null) {
                 if (direction == MappingDirection.OBFUSCATED_TO_NAMED) {
                     String sanitized = sanitizeIllegalMemberName(name, name + descriptor, true);
@@ -233,6 +251,106 @@ public final class BytecodeRemapper {
                 modified = true;
             }
             return mappedName;
+        }
+
+        /**
+         * 层级感知的字段映射查找：成员映射挂在声明类条目下，而引用点的 owner 可能是其子类
+         * （如实机暴露的 TitleMusicPlayer 引用 BaseMusicPlayer 声明的 trackSpec）。
+         */
+        private Optional<MappingEntry> findFieldEntry(String owner, String name) {
+            return findMemberHierarchically(owner, current -> switch (direction) {
+                case OBFUSCATED_TO_NAMED -> repository.findFieldByObfuscatedName(current, name);
+                case NAMED_TO_OBFUSCATED -> repository.findFieldByNamedName(current, name);
+            });
+        }
+
+        /** 层级感知的方法映射查找，语义同 {@link #findFieldEntry}。 */
+        private Optional<MappingEntry> findMethodEntry(String owner, String name, String descriptor) {
+            return findMemberHierarchically(owner, current -> switch (direction) {
+                case OBFUSCATED_TO_NAMED -> repository.findMethodByObfuscatedName(current, name, descriptor);
+                case NAMED_TO_OBFUSCATED -> repository.findMethodByNamedName(current, name, descriptor);
+            });
+        }
+
+        /**
+         * 成员映射的层级查找：先 owner 直查，再沿父类链直上，最后对全部可达接口做广搜
+         * （与 JVM 成员解析优先级一致）。所有 owner 名均为输入命名空间；
+         * 层级字节不可达时退化为原有的 owner 直查。
+         */
+        private Optional<MappingEntry> findMemberHierarchically(String owner,
+                                                                Function<String, Optional<MappingEntry>> directLookup) {
+            Optional<MappingEntry> hit = directLookup.apply(owner);
+            if (hit.isPresent()) {
+                return hit;
+            }
+
+            Set<String> visited = new HashSet<>();
+            visited.add(owner);
+            Deque<String> interfaceQueue = new ArrayDeque<>();
+            String current = owner;
+            while (true) {
+                for (String itf : interfacesInputNames(current)) {
+                    if (visited.add(itf)) {
+                        interfaceQueue.add(itf);
+                    }
+                }
+                String superName = superInputName(current);
+                if (superName == null || !visited.add(superName)) {
+                    break;
+                }
+                hit = directLookup.apply(superName);
+                if (hit.isPresent()) {
+                    return hit;
+                }
+                current = superName;
+            }
+            while (!interfaceQueue.isEmpty()) {
+                String itf = interfaceQueue.poll();
+                hit = directLookup.apply(itf);
+                if (hit.isPresent()) {
+                    return hit;
+                }
+                for (String parent : interfacesInputNames(itf)) {
+                    if (visited.add(parent)) {
+                        interfaceQueue.add(parent);
+                    }
+                }
+            }
+            return Optional.empty();
+        }
+
+        /** 输入命名空间类名 → 输入命名空间直接父类名；无父类或层级不可达时 null。无副作用（不置 modified）。 */
+        private String superInputName(String inputName) {
+            return hierarchy.findSuperName(toOutputName(inputName))
+                    .map(this::toInputName)
+                    .orElse(null);
+        }
+
+        /** 输入命名空间类名 → 输入命名空间直接接口名列表。无副作用（不置 modified）。 */
+        private List<String> interfacesInputNames(String inputName) {
+            return hierarchy.findInterfaces(toOutputName(inputName)).stream()
+                    .map(this::toInputName)
+                    .toList();
+        }
+
+        /** 输入命名空间 → 输出命名空间类名换算（无副作用版 {@link #map(String)}）。 */
+        private String toOutputName(String inputName) {
+            return switch (direction) {
+                case OBFUSCATED_TO_NAMED -> repository.findClassByObfuscatedName(inputName)
+                        .map(MappingEntry::namedName).orElse(inputName);
+                case NAMED_TO_OBFUSCATED -> repository.findClassByNamedName(inputName)
+                        .map(MappingEntry::obfuscatedName).orElse(inputName);
+            };
+        }
+
+        /** 输出命名空间 → 输入命名空间类名换算；未命中映射时原样返回。 */
+        private String toInputName(String outputName) {
+            return switch (direction) {
+                case OBFUSCATED_TO_NAMED -> repository.findClassByNamedName(outputName)
+                        .map(MappingEntry::obfuscatedName).orElse(outputName);
+                case NAMED_TO_OBFUSCATED -> repository.findClassByObfuscatedName(outputName)
+                        .map(MappingEntry::namedName).orElse(outputName);
+            };
         }
 
         /**

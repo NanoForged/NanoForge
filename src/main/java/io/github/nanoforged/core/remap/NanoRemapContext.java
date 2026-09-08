@@ -44,9 +44,26 @@ public final class NanoRemapContext {
 
     private NanoRemapContext(TinyV2MappingRepository repository, Path mappingPath) {
         Objects.requireNonNull(repository, "repository");
-        this.bytecodeRemapper = new BytecodeRemapper(repository, MappingDirection.OBFUSCATED_TO_NAMED);
+        // 帧重算层级走 LaunchClassLoader 资源直读字节（named 游戏 jar 与已挂载 obf 模组 jar
+        // 均可见），不触发类定义；Launch 未就绪（tweaker 期之前/纯单测）时退回无层级，
+        // 帧合流落 java/lang/Object（精度降级，校验语义不变）。
+        RemapClassHierarchy hierarchy = isLaunchClassLoaderAvailable()
+                ? RemapClassHierarchy.ofClassLoader(repository, MappingDirection.OBFUSCATED_TO_NAMED,
+                        net.minecraft.launchwrapper.Launch.classLoader)
+                : RemapClassHierarchy.empty();
+        this.bytecodeRemapper = new BytecodeRemapper(repository, MappingDirection.OBFUSCATED_TO_NAMED, hierarchy);
         this.repository = repository;
         this.mappingPath = mappingPath;
+    }
+
+    /** LaunchClassLoader 是否已就绪（tweaker 期之前与纯单测环境为否）。 */
+    private static boolean isLaunchClassLoaderAvailable() {
+        try {
+            return net.minecraft.launchwrapper.Launch.classLoader != null;
+        } catch (NoClassDefFoundError e) {
+            // Launch 类本身不在 classpath（纯单测环境）
+            return false;
+        }
     }
 
     /**
